@@ -21,3 +21,77 @@ RETURNING "Id";
 2026-06-26 11:40:14 [INF] Writing value of type 'ErrorResponse' as Json.
 2026-06-26 11:40:14 [INF] Executed endpoint 'HTTP: POST /extract'
 2026-06-26 11:40:14 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 400 null application/json; charset=utf-8 588.5782ms
+2026-06-26 15:51:53 [INF] Executed DbCommand (24ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*) FROM "sqlite_master" WHERE "type" = 'table' AND "rootpage" IS NOT NULL;
+2026-06-26 15:51:54 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 19
+2026-06-26 15:51:54 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-26 15:51:54 [INF] Extraction Unknown false in 0ms — not-a-url
+2026-06-26 15:51:54 [INF] Executed DbCommand (8ms) [Parameters=[@p0='?' (Size = 7), @p1='?' (DbType = Boolean), @p2='?', @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 9)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-26 15:51:54 [INF] Setting HTTP status code 400.
+2026-06-26 15:51:54 [INF] Writing value of type 'ErrorResponse' as Json.
+2026-06-26 15:51:54 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-26 15:51:54 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 400 null application/json; charset=utf-8 552.1215ms
+2026-06-26 15:51:54 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 52
+2026-06-26 15:51:54 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-26 15:52:14 [INF] Extraction X/Twitter true in 19788ms — https://x.com/i/status/2069866804776784165
+2026-06-26 15:52:14 [INF] Executed DbCommand (0ms) [Parameters=[@p0='?' (Size = 9), @p1='?' (DbType = Boolean), @p2='?' (Size = 98), @p3='?' (DbType = DateTime), @p4='?' (Size = 79), @p5='?' (Size = 42)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-26 15:52:14 [INF] Setting HTTP status code 200.
+2026-06-26 15:52:14 [INF] Writing value of type 'ExtractResponse' as Json.
+2026-06-26 15:52:14 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-26 15:52:14 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 200 null application/json; charset=utf-8 19915.7282ms
+2026-06-26 15:58:27 [INF] Executed DbCommand (17ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*) FROM "sqlite_master" WHERE "type" = 'table' AND "rootpage" IS NOT NULL;
+2026-06-26 15:58:27 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 19
+2026-06-26 15:58:27 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-26 15:58:27 [INF] Extraction Unknown false in 0ms — not-a-url
+2026-06-26 15:58:27 [INF] Executed DbCommand (10ms) [Parameters=[@p0='?' (Size = 7), @p1='?' (DbType = Boolean), @p2='?', @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 9)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-26 15:58:27 [INF] Setting HTTP status code 400.
+2026-06-26 15:58:27 [INF] Writing value of type 'ErrorResponse' as Json.
+2026-06-26 15:58:27 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-26 15:58:27 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 400 null application/json; charset=utf-8 508.8888ms
+2026-06-26 16:01:25 [INF] Executed DbCommand (15ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*) FROM "sqlite_master" WHERE "type" = 'table' AND "rootpage" IS NOT NULL;
+2026-06-26 16:01:25 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 19
+2026-06-26 16:01:25 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-26 16:01:25 [INF] Extraction Unknown false in 0ms — not-a-url
+2026-06-26 16:01:25 [INF] Executed DbCommand (8ms) [Parameters=[@p0='?' (Size = 7), @p1='?' (DbType = Boolean), @p2='?', @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 9)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-26 16:01:25 [INF] Setting HTTP status code 400.
+2026-06-26 16:01:25 [INF] Writing value of type 'ErrorResponse' as Json.
+2026-06-26 16:01:25 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-26 16:01:25 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 400 null application/json; charset=utf-8 579.193ms
+2026-06-26 16:02:26 [INF] Executed DbCommand (15ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*) FROM "sqlite_master" WHERE "type" = 'table' AND "rootpage" IS NOT NULL;
+2026-06-26 16:02:26 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 19
+2026-06-26 16:02:27 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-26 16:02:27 [INF] Extraction Unknown false in 0ms — not-a-url
+2026-06-26 16:02:27 [INF] Executed DbCommand (8ms) [Parameters=[@p0='?' (Size = 7), @p1='?' (DbType = Boolean), @p2='?', @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 9)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-26 16:02:27 [INF] Setting HTTP status code 400.
+2026-06-26 16:02:27 [INF] Writing value of type 'ErrorResponse' as Json.
+2026-06-26 16:02:27 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-26 16:02:27 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 400 null application/json; charset=utf-8 565.375ms
+2026-06-26 16:02:27 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 52
+2026-06-26 16:02:27 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-26 16:02:32 [INF] Extraction X/Twitter true in 4775ms — https://x.com/i/status/2069866804776784165
+2026-06-26 16:02:32 [INF] Executed DbCommand (0ms) [Parameters=[@p0='?' (Size = 9), @p1='?' (DbType = Boolean), @p2='?' (Size = 98), @p3='?' (DbType = DateTime), @p4='?' (Size = 79), @p5='?' (Size = 42)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-26 16:02:32 [INF] Setting HTTP status code 200.
+2026-06-26 16:02:32 [INF] Writing value of type 'ExtractResponse' as Json.
+2026-06-26 16:02:32 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-26 16:02:32 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 200 null application/json; charset=utf-8 4901.7726ms

@@ -22,6 +22,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite($"Data Source={dbPath}"));
 
 builder.Services.AddSingleton<IYtDlpRunner, YtDlpProcessRunner>();
+builder.Services.AddHttpClient<ILinkedInImageFetcher, LinkedInImageFetcher>();
 
 var app = builder.Build();
 
@@ -34,6 +35,28 @@ using (var scope = app.Services.CreateScope())
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/swagger") || context.Request.Path == "/")
+    {
+        await next();
+        return;
+    }
+
+    var apiKey = Environment.GetEnvironmentVariable("API_KEY");
+    if (!string.IsNullOrEmpty(apiKey))
+    {
+        if (!context.Request.Headers.TryGetValue("X-Api-Key", out var providedKey) || providedKey != apiKey)
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsync("Unauthorized");
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.MapGet("/", () => "Issam's Tube backend is running");
 
 app.MapGet("/history", async (AppDbContext db) =>
@@ -45,17 +68,17 @@ app.MapGet("/history", async (AppDbContext db) =>
     return Results.Ok(recent);
 });
 
-app.MapPost("/extract", async (ExtractRequest request, AppDbContext db, IYtDlpRunner runner) =>
+app.MapPost("/extract", async (ExtractRequest request, AppDbContext db, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher) =>
 {
     var stopwatch = Stopwatch.StartNew();
-    var (result, success, platform, title, thumbnail) = await ExtractionLogic.RunExtractionAsync(request, runner);
+    var (result, success, platform, title, thumbnail) = await ExtractionLogic.RunExtractionAsync(request, runner, linkedInFetcher);
     stopwatch.Stop();
 
     var urlForLog = !string.IsNullOrEmpty(request.Url) && request.Url.Length > 60
         ? request.Url[..60] + "..."
         : request.Url;
 
-    Log.Information("Extraction {Platform} {Success} in {DurationMs}ms — {UrlTruncated}",
+    Log.Information("Extraction {Platform} {Success} in {DurationMs}ms â€” {UrlTruncated}",
         platform, success, stopwatch.ElapsedMilliseconds, urlForLog);
 
     db.History.Add(new DownloadHistory
@@ -80,7 +103,8 @@ record ExtractRequest(string Url);
 record ExtractResponse(
     [property: JsonPropertyName("video_url")] string VideoUrl,
     [property: JsonPropertyName("title")] string Title,
-    [property: JsonPropertyName("thumbnail")] string? Thumbnail);
+    [property: JsonPropertyName("thumbnail")] string? Thumbnail,
+    [property: JsonPropertyName("media_type")] string MediaType);
 
 record ErrorResponse(
     [property: JsonPropertyName("error_code")] string ErrorCode,

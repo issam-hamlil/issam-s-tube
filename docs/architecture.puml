@@ -1,0 +1,20 @@
+@startuml
+skinparam componentStyle rectangle
+
+actor "Phone (Expo app)" as mobile
+
+package "Backend (Docker container)" {
+  component "IssamsTube.Api\n(ASP.NET Minimal API)" as api
+  component "yt-dlp subprocess\n(+ curl-cffi, ffmpeg)" as ytdlp
+  database "SQLite\n(history.db)" as db
+  file "Serilog file sink\n(logs/)" as logs
+}
+
+cloud "TikTok / X / Facebook / Instagram" as platforms
+
+mobile --> api : POST /extract\nGET /history
+api --> ytdlp : spawn process
+ytdlp --> platforms : HTTPS
+api --> db : EF Core
+api --> logs : structured logs
+@enduml

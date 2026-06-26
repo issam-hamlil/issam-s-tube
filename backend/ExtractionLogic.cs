@@ -26,6 +26,15 @@ public class YtDlpProcessRunner : IYtDlpRunner
         psi.ArgumentList.Add("--socket-timeout");
         psi.ArgumentList.Add("15");
 
+        // YouTube's default format selection prefers separate video+audio
+        // streams that need ffmpeg to merge — no single playable "url" in
+        // that case. Force one pre-combined file instead.
+        if (url.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) || url.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
+        {
+            psi.ArgumentList.Add("-f");
+            psi.ArgumentList.Add("best[ext=mp4]/best");
+        }
+
         if (!string.IsNullOrEmpty(cookiesPath))
         {
             psi.ArgumentList.Add("--cookies");
@@ -68,7 +77,7 @@ public class YtDlpProcessRunner : IYtDlpRunner
 
 internal static class ExtractionLogic
 {
-    internal static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> RunExtractionAsync(ExtractRequest request, IYtDlpRunner runner)
+    internal static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> RunExtractionAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher)
     {
         if (string.IsNullOrWhiteSpace(request.Url) ||
             !Uri.TryCreate(request.Url, UriKind.Absolute, out var parsedUrl) ||
@@ -78,6 +87,18 @@ internal static class ExtractionLogic
         }
 
         string platform = DetectPlatform(parsedUrl);
+
+        if (platform == "LinkedIn")
+        {
+            var (imageUrl, liTitle, error) = await linkedInFetcher.FetchAsync(request.Url);
+
+            if (imageUrl == null)
+            {
+                return (Results.BadRequest(new ErrorResponse("LINKEDIN_IMAGE_NOT_FOUND", error ?? "Could not find an image on this LinkedIn post.")), false, platform, null, null);
+            }
+
+            return (Results.Ok(new ExtractResponse(imageUrl, liTitle ?? "LinkedIn image", imageUrl, "image")), true, platform, liTitle, imageUrl);
+        }
 
         var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
         var cookiesToUse = parsedUrl.Host.Contains("instagram.com", StringComparison.OrdinalIgnoreCase) && File.Exists(cookiesPath)
@@ -132,7 +153,7 @@ internal static class ExtractionLogic
                 return (Results.BadRequest(new ErrorResponse("NO_PLAYABLE_URL", "yt-dlp returned metadata but no usable video URL was found.")), false, platform, title, thumbnail);
             }
 
-            return (Results.Ok(new ExtractResponse(videoUrl, title, thumbnail)), true, platform, title, thumbnail);
+            return (Results.Ok(new ExtractResponse(videoUrl, title, thumbnail, "video")), true, platform, title, thumbnail);
         }
         catch (JsonException)
         {
@@ -150,6 +171,8 @@ internal static class ExtractionLogic
         if (host.Contains("instagram")) return "Instagram";
         if (host.Contains("facebook") || host.Contains("fb.watch")) return "Facebook";
         if (host.Contains("twitter") || host.Contains("x.com")) return "X/Twitter";
+        if (host.Contains("youtube") || host.Contains("youtu.be")) return "YouTube";
+        if (host.Contains("linkedin")) return "LinkedIn";
         return "Unknown";
     }
 

@@ -9,7 +9,7 @@ public class ExtractionLogicTests
         var mockRunner = new Mock<IYtDlpRunner>();
         var request = new ExtractRequest("not-a-url");
 
-        var (result, success, platform, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object);
+        var (result, success, platform, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object, Mock.Of<ILinkedInImageFetcher>());
 
         Assert.False(success);
         Assert.Equal("Unknown", platform);
@@ -28,7 +28,7 @@ public class ExtractionLogicTests
 
         var request = new ExtractRequest("https://www.tiktok.com/@user/video/123");
 
-        var (result, success, platform, title, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object);
+        var (result, success, platform, title, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object, Mock.Of<ILinkedInImageFetcher>());
 
         Assert.True(success);
         Assert.Equal("TikTok", platform);
@@ -47,7 +47,7 @@ public class ExtractionLogicTests
 
         var request = new ExtractRequest("https://www.instagram.com/reel/abc/");
 
-        var (result, success, _, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object);
+        var (result, success, _, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object, Mock.Of<ILinkedInImageFetcher>());
 
         Assert.True(success);
         var ok = Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.Ok<ExtractResponse>>(result);
@@ -64,7 +64,7 @@ public class ExtractionLogicTests
 
         var request = new ExtractRequest("https://www.instagram.com/reel/abc/");
 
-        var (result, success, _, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object);
+        var (result, success, _, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object, Mock.Of<ILinkedInImageFetcher>());
 
         Assert.False(success);
         var badRequest = Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.BadRequest<ErrorResponse>>(result);
@@ -84,7 +84,7 @@ public class ExtractionLogicTests
 
         var request = new ExtractRequest("https://www.instagram.com/reel/abc/");
 
-        var (_, success, _, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object);
+        var (_, success, _, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object, Mock.Of<ILinkedInImageFetcher>());
 
         Assert.True(success);
         mockRunner.Verify(r => r.RunAsync(request.Url, tempCookiesFile), Times.Once);
@@ -114,5 +114,44 @@ public class ExtractionLogicTests
     {
         var (code, _) = ExtractionLogic.ClassifyError(stderr);
         Assert.Equal(expectedCode, code);
+    }
+
+    [Fact]
+    public async Task LinkedInUrl_ReturnsImageFromFetcher_WithoutCallingYtDlp()
+    {
+        var mockRunner = new Mock<IYtDlpRunner>();
+        var mockFetcher = new Mock<ILinkedInImageFetcher>();
+        mockFetcher
+            .Setup(f => f.FetchAsync(It.IsAny<string>()))
+            .ReturnsAsync(("https://media.licdn.com/dms/image/abc.jpg", "A nice post", (string?)null));
+
+        var request = new ExtractRequest("https://www.linkedin.com/posts/someone_abc-activity-123/");
+
+        var (result, success, platform, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object, mockFetcher.Object);
+
+        Assert.True(success);
+        Assert.Equal("LinkedIn", platform);
+        var ok = Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.Ok<ExtractResponse>>(result);
+        Assert.Equal("https://media.licdn.com/dms/image/abc.jpg", ok.Value!.VideoUrl);
+        Assert.Equal("image", ok.Value!.MediaType);
+        mockRunner.Verify(r => r.RunAsync(It.IsAny<string>(), It.IsAny<string?>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task LinkedInUrl_NoImageFound_ReturnsError()
+    {
+        var mockRunner = new Mock<IYtDlpRunner>();
+        var mockFetcher = new Mock<ILinkedInImageFetcher>();
+        mockFetcher
+            .Setup(f => f.FetchAsync(It.IsAny<string>()))
+            .ReturnsAsync(((string?)null, (string?)null, "No og:image tag found"));
+
+        var request = new ExtractRequest("https://www.linkedin.com/posts/someone_abc-activity-123/");
+
+        var (result, success, _, _, _) = await ExtractionLogic.RunExtractionAsync(request, mockRunner.Object, mockFetcher.Object);
+
+        Assert.False(success);
+        var badRequest = Assert.IsType<Microsoft.AspNetCore.Http.HttpResults.BadRequest<ErrorResponse>>(result);
+        Assert.Equal("LINKEDIN_IMAGE_NOT_FOUND", badRequest.Value!.ErrorCode);
     }
 }
