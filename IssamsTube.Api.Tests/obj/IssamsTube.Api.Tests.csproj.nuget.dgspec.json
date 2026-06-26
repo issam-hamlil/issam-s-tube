@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Projects\\issam's tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj": {}
+    "D:\\Projects\\issam-s-tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj": {}
   },
   "projects": {
-    "D:\\Projects\\issam's tube\\backend\\IssamsTube.Api.csproj": {
+    "D:\\Projects\\issam-s-tube\\backend\\IssamsTube.Api.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Projects\\issam's tube\\backend\\IssamsTube.Api.csproj",
+        "projectUniqueName": "D:\\Projects\\issam-s-tube\\backend\\IssamsTube.Api.csproj",
         "projectName": "IssamsTube.Api",
-        "projectPath": "D:\\Projects\\issam's tube\\backend\\IssamsTube.Api.csproj",
+        "projectPath": "D:\\Projects\\issam-s-tube\\backend\\IssamsTube.Api.csproj",
         "packagesPath": "C:\\Users\\issam\\.nuget\\packages\\",
-        "outputPath": "D:\\Projects\\issam's tube\\backend\\obj\\",
+        "outputPath": "D:\\Projects\\issam-s-tube\\backend\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -94,14 +94,14 @@
         }
       }
     },
-    "D:\\Projects\\issam's tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj": {
+    "D:\\Projects\\issam-s-tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Projects\\issam's tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj",
+        "projectUniqueName": "D:\\Projects\\issam-s-tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj",
         "projectName": "IssamsTube.Api.Tests",
-        "projectPath": "D:\\Projects\\issam's tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj",
+        "projectPath": "D:\\Projects\\issam-s-tube\\IssamsTube.Api.Tests\\IssamsTube.Api.Tests.csproj",
         "packagesPath": "C:\\Users\\issam\\.nuget\\packages\\",
-        "outputPath": "D:\\Projects\\issam's tube\\IssamsTube.Api.Tests\\obj\\",
+        "outputPath": "D:\\Projects\\issam-s-tube\\IssamsTube.Api.Tests\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -122,8 +122,8 @@
           "net9.0": {
             "targetAlias": "net9.0",
             "projectReferences": {
-              "D:\\Projects\\issam's tube\\backend\\IssamsTube.Api.csproj": {
-                "projectPath": "D:\\Projects\\issam's tube\\backend\\IssamsTube.Api.csproj"
+              "D:\\Projects\\issam-s-tube\\backend\\IssamsTube.Api.csproj": {
+                "projectPath": "D:\\Projects\\issam-s-tube\\backend\\IssamsTube.Api.csproj"
               }
             }
           }
@@ -144,6 +144,10 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "dependencies": {
+            "Microsoft.AspNetCore.Mvc.Testing": {
+              "target": "Package",
+              "version": "[9.0.*, )"
+            },
             "Microsoft.NET.Test.Sdk": {
               "target": "Package",
               "version": "[17.12.0, )"

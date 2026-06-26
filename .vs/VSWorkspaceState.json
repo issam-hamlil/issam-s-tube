@@ -1,8 +1,13 @@
 {
   "ExpandedNodes": [
     "",
-    "\\docs"
+    "\\app",
+    "\\backend",
+    "\\backend\\data",
+    "\\backend\\logs",
+    "\\backend\\Properties",
+    "\\docs",
+    "\\IssamsTube.Api.Tests"
   ],
-  "SelectedNode": "\\.gitignore",
   "PreviewInSolutionExplorer": false
 }

@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("IssamsTube.Api.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f60c63e81d7e110a1736dbab5bc8ffee0c52aed7")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+848c0bc0ec50e829155a32ba11fc077b344b2061")]
 [assembly: System.Reflection.AssemblyProductAttribute("IssamsTube.Api.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("IssamsTube.Api.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

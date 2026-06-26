@@ -1,0 +1,23 @@
+2026-06-26 11:40:12 [INF] Executed DbCommand (22ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+PRAGMA journal_mode = 'wal';
+2026-06-26 11:40:13 [INF] Executed DbCommand (0ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+CREATE TABLE "History" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_History" PRIMARY KEY AUTOINCREMENT,
+    "Url" TEXT NOT NULL,
+    "Platform" TEXT NOT NULL,
+    "Title" TEXT NULL,
+    "Thumbnail" TEXT NULL,
+    "Timestamp" TEXT NOT NULL,
+    "Success" INTEGER NOT NULL
+);
+2026-06-26 11:40:13 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 19
+2026-06-26 11:40:13 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-26 11:40:13 [INF] Extraction Unknown false in 0ms — not-a-url
+2026-06-26 11:40:13 [INF] Executed DbCommand (13ms) [Parameters=[@p0='?' (Size = 7), @p1='?' (DbType = Boolean), @p2='?', @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 9)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-26 11:40:14 [INF] Setting HTTP status code 400.
+2026-06-26 11:40:14 [INF] Writing value of type 'ErrorResponse' as Json.
+2026-06-26 11:40:14 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-26 11:40:14 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 400 null application/json; charset=utf-8 588.5782ms
