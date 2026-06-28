@@ -3,7 +3,7 @@ backend/obj/
 backend/*.user
 backend/logs/
 backend/data/
-cookies.txt
+
 app/node_modules/
 app/.expo/
 .DS_Store

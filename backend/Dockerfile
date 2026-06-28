@@ -24,4 +24,6 @@ EXPOSE 8080
 
 RUN mkdir -p /app/data /app/logs
 
+COPY cookies.txt /app/cookies.txt
+
 ENTRYPOINT ["dotnet", "IssamsTube.Api.dll"]
