@@ -5,8 +5,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Clipboard from 'expo-clipboard';
 
-const API_BASE_URL = 'http://192.168.11.133:8080'; // your computer's LAN IP — see note below
-const API_KEY = ''; // fill in once Phase 8's middleware is live
+const API_BASE_URL = 'issams-tube-backend-production.up.railway.app'; // your computer's LAN IP — see note below
+const API_KEY = 'my-super-secret-key-2017'; // fill in once Phase 8's middleware is live
 
 export default function App() {
   const [url, setUrl] = useState('');
@@ -175,8 +175,8 @@ export default function App() {
                   preparing
                     ? 'Preparing high-quality video…'
                     : downloading
-                    ? `Downloading… ${Math.round(downloadProgress * 100)}%`
-                    : 'Download'
+                      ? `Downloading… ${Math.round(downloadProgress * 100)}%`
+                      : 'Download'
                 }
                 onPress={handleDownload}
                 disabled={preparing || downloading}
