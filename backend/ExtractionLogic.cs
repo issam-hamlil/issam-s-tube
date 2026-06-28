@@ -1,48 +1,77 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 public record YtDlpRunResult(int ExitCode, string Stdout, string Stderr, bool TimedOut, string? StartError);
+
+public record DownloadResponse(
+    [property: JsonPropertyName("download_url")] string DownloadUrl,
+    [property: JsonPropertyName("media_type")] string MediaType);
 
 public interface IYtDlpRunner
 {
     Task<YtDlpRunResult> RunAsync(string url, string? cookiesPath);
+    Task<YtDlpRunResult> DownloadAsync(string url, string? cookiesPath, string outputPath);
 }
 
 public class YtDlpProcessRunner : IYtDlpRunner
 {
-    public async Task<YtDlpRunResult> RunAsync(string url, string? cookiesPath)
+    public Task<YtDlpRunResult> RunAsync(string url, string? cookiesPath)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = "yt-dlp",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
+        var psi = BasePsi();
         psi.ArgumentList.Add("-j");
-        psi.ArgumentList.Add("--no-warnings");
-        psi.ArgumentList.Add("--socket-timeout");
-        psi.ArgumentList.Add("15");
 
-        // YouTube's default format selection prefers separate video+audio
-        // streams that need ffmpeg to merge — no single playable "url" in
-        // that case. Force one pre-combined file instead.
         if (url.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) || url.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
         {
             psi.ArgumentList.Add("-f");
             psi.ArgumentList.Add("best[ext=mp4]/best");
         }
 
+        AddCookiesAndUrl(psi, cookiesPath, url);
+        return ExecuteAsync(psi, TimeSpan.FromSeconds(30));
+    }
+
+    public Task<YtDlpRunResult> DownloadAsync(string url, string? cookiesPath, string outputPath)
+    {
+        var psi = BasePsi();
+
+        // Real download, not metadata-only — always asks for the best
+        // available video+audio, even if that means two separate streams
+        // that need merging. This is what actually closes the quality gap;
+        // a direct CDN URL can only ever be a single pre-combined file.
+        psi.ArgumentList.Add("-f");
+        psi.ArgumentList.Add("bestvideo+bestaudio/best");
+        psi.ArgumentList.Add("--merge-output-format");
+        psi.ArgumentList.Add("mp4");
+        psi.ArgumentList.Add("-o");
+        psi.ArgumentList.Add(outputPath);
+
+        AddCookiesAndUrl(psi, cookiesPath, url);
+        return ExecuteAsync(psi, TimeSpan.FromMinutes(10));
+    }
+
+    private static ProcessStartInfo BasePsi() => new()
+    {
+        FileName = "yt-dlp",
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+        CreateNoWindow = true,
+        ArgumentList = { "--no-warnings", "--socket-timeout", "15" },
+    };
+
+    private static void AddCookiesAndUrl(ProcessStartInfo psi, string? cookiesPath, string url)
+    {
         if (!string.IsNullOrEmpty(cookiesPath))
         {
             psi.ArgumentList.Add("--cookies");
             psi.ArgumentList.Add(cookiesPath);
         }
-
         psi.ArgumentList.Add(url);
+    }
 
+    private static async Task<YtDlpRunResult> ExecuteAsync(ProcessStartInfo psi, TimeSpan timeout)
+    {
         using var process = new Process { StartInfo = psi };
 
         try
@@ -57,7 +86,7 @@ public class YtDlpProcessRunner : IYtDlpRunner
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var cts = new CancellationTokenSource(timeout);
         try
         {
             await process.WaitForExitAsync(cts.Token);
@@ -97,7 +126,7 @@ internal static class ExtractionLogic
                 return (Results.BadRequest(new ErrorResponse("LINKEDIN_IMAGE_NOT_FOUND", error ?? "Could not find an image on this LinkedIn post.")), false, platform, null, null);
             }
 
-            return (Results.Ok(new ExtractResponse(imageUrl, liTitle ?? "LinkedIn image", imageUrl, "image")), true, platform, liTitle, imageUrl);
+            return (Results.Ok(new ExtractResponse(imageUrl, liTitle ?? "LinkedIn image", imageUrl, "image", null)), true, platform, liTitle, imageUrl);
         }
 
         var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
@@ -138,6 +167,7 @@ internal static class ExtractionLogic
             string? thumbnail = root.TryGetProperty("thumbnail", out var th) ? th.GetString() : null;
 
             string? videoUrl = root.TryGetProperty("url", out var u) ? u.GetString() : null;
+            Dictionary<string, string>? headers = ExtractHeaders(root);
 
             if (string.IsNullOrEmpty(videoUrl) &&
                 root.TryGetProperty("formats", out var formats) &&
@@ -146,6 +176,7 @@ internal static class ExtractionLogic
             {
                 var best = formats[formats.GetArrayLength() - 1];
                 videoUrl = best.TryGetProperty("url", out var fu) ? fu.GetString() : null;
+                headers ??= ExtractHeaders(best);
             }
 
             if (string.IsNullOrEmpty(videoUrl))
@@ -153,7 +184,7 @@ internal static class ExtractionLogic
                 return (Results.BadRequest(new ErrorResponse("NO_PLAYABLE_URL", "yt-dlp returned metadata but no usable video URL was found.")), false, platform, title, thumbnail);
             }
 
-            return (Results.Ok(new ExtractResponse(videoUrl, title, thumbnail, "video")), true, platform, title, thumbnail);
+            return (Results.Ok(new ExtractResponse(videoUrl, title, thumbnail, "video", headers)), true, platform, title, thumbnail);
         }
         catch (JsonException)
         {
@@ -162,6 +193,82 @@ internal static class ExtractionLogic
                 title: "EXTRACTION_FAILED",
                 statusCode: StatusCodes.Status500InternalServerError), false, platform, null, null);
         }
+    }
+
+    public static async Task<IResult> DownloadVideoAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher, string downloadsDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(request.Url) ||
+            !Uri.TryCreate(request.Url, UriKind.Absolute, out var parsedUrl) ||
+            (parsedUrl.Scheme != Uri.UriSchemeHttp && parsedUrl.Scheme != Uri.UriSchemeHttps))
+        {
+            return Results.BadRequest(new ErrorResponse("INVALID_URL", "The provided URL is missing or not a valid http(s) URL."));
+        }
+
+        string platform = DetectPlatform(parsedUrl);
+
+        // Images have no separate audio stream to merge — just resolve and
+        // hand back the same direct URL the preview step already found.
+        if (platform == "LinkedIn")
+        {
+            var (imageUrl, _, error) = await linkedInFetcher.FetchAsync(request.Url);
+            if (imageUrl == null)
+            {
+                return Results.BadRequest(new ErrorResponse("LINKEDIN_IMAGE_NOT_FOUND", error ?? "Could not find an image on this LinkedIn post."));
+            }
+            return Results.Ok(new DownloadResponse(imageUrl, "image"));
+        }
+
+        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
+        var cookiesToUse = platform == "Instagram" && File.Exists(cookiesPath) ? cookiesPath : null;
+
+        var fileName = $"{Guid.NewGuid()}.mp4";
+        var outputPath = Path.Combine(downloadsDirectory, fileName);
+
+        var run = await runner.DownloadAsync(request.Url, cookiesToUse, outputPath);
+
+        if (run.StartError != null)
+        {
+            return Results.Problem(
+                detail: $"Could not start yt-dlp: {run.StartError}",
+                title: "YTDLP_NOT_FOUND",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        if (run.TimedOut)
+        {
+            return Results.Problem(
+                detail: "The download took too long.",
+                title: "TIMEOUT",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        }
+
+        if (run.ExitCode != 0 || !File.Exists(outputPath))
+        {
+            var (code, message) = ClassifyError(run.Stderr);
+            return Results.BadRequest(new ErrorResponse(code, message));
+        }
+
+        return Results.Ok(new DownloadResponse($"/files/{fileName}", "video"));
+    }
+
+    static Dictionary<string, string>? ExtractHeaders(JsonElement element)
+    {
+        if (!element.TryGetProperty("http_headers", out var headersElement) || headersElement.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var headers = new Dictionary<string, string>();
+        foreach (var prop in headersElement.EnumerateObject())
+        {
+            // Only the two that actually gate access on these CDNs — passing
+            // every yt-dlp-internal header through is unnecessary, and some
+            // (like Accept-Encoding) can confuse a mobile HTTP client.
+            if (prop.Name.Equals("Referer", StringComparison.OrdinalIgnoreCase) ||
+                prop.Name.Equals("User-Agent", StringComparison.OrdinalIgnoreCase))
+            {
+                headers[prop.Name] = prop.Value.GetString() ?? "";
+            }
+        }
+        return headers.Count > 0 ? headers : null;
     }
 
     internal static string DetectPlatform(Uri url)

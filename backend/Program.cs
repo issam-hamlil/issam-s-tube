@@ -57,6 +57,14 @@ app.Use(async (context, next) =>
     await next();
 });
 
+var downloadsPath = Path.Combine(AppContext.BaseDirectory, "downloads");
+Directory.CreateDirectory(downloadsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(downloadsPath),
+    RequestPath = "/files"
+});
+
 app.MapGet("/", () => "Issam's Tube backend is running");
 
 app.MapGet("/history", async (AppDbContext db) =>
@@ -66,6 +74,24 @@ app.MapGet("/history", async (AppDbContext db) =>
         .Take(50)
         .ToListAsync();
     return Results.Ok(recent);
+});
+
+app.MapPost("/download", async (ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher) =>
+{
+    var downloadsDir = Path.Combine(AppContext.BaseDirectory, "downloads");
+    Directory.CreateDirectory(downloadsDir);
+
+    // Bounds disk usage without a background job — sweep anything older
+    // than an hour before creating the new file.
+    foreach (var file in Directory.GetFiles(downloadsDir))
+    {
+        if (DateTime.UtcNow - File.GetCreationTimeUtc(file) > TimeSpan.FromHours(1))
+        {
+            try { File.Delete(file); } catch { /* best effort */ }
+        }
+    }
+
+    return await ExtractionLogic.DownloadVideoAsync(request, runner, linkedInFetcher, downloadsDir);
 });
 
 app.MapPost("/extract", async (ExtractRequest request, AppDbContext db, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher) =>
@@ -104,7 +130,8 @@ record ExtractResponse(
     [property: JsonPropertyName("video_url")] string VideoUrl,
     [property: JsonPropertyName("title")] string Title,
     [property: JsonPropertyName("thumbnail")] string? Thumbnail,
-    [property: JsonPropertyName("media_type")] string MediaType);
+    [property: JsonPropertyName("media_type")] string MediaType,
+    [property: JsonPropertyName("headers")] Dictionary<string, string>? Headers);
 
 record ErrorResponse(
     [property: JsonPropertyName("error_code")] string ErrorCode,

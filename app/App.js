@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, Button, Image, ActivityIndicator, Alert, FlatList } from 'react-native';
-import * as FileSystem from 'expo-file-system';
+//import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Clipboard from 'expo-clipboard';
 
-const API_BASE_URL = 'http://10.190.204.22:8080'; // your computer's LAN IP — see note below
+const API_BASE_URL = 'http://192.168.11.133:8080'; // your computer's LAN IP — see note below
 const API_KEY = ''; // fill in once Phase 8's middleware is live
 
 export default function App() {
@@ -13,6 +14,7 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [preparing, setPreparing] = useState(false);
   const [screen, setScreen] = useState('home'); // 'home' | 'history'
   const [history, setHistory] = useState([]);
 
@@ -58,7 +60,7 @@ export default function App() {
   };
 
   const handleDownload = async () => {
-    if (!result?.video_url) return;
+    if (!url) return;
 
     const { status } = await MediaLibrary.requestPermissionsAsync();
     if (status !== 'granted') {
@@ -66,16 +68,39 @@ export default function App() {
       return;
     }
 
-    setDownloading(true);
+    setPreparing(true);
     setDownloadProgress(0);
 
     try {
-      const extension = result.media_type === 'image' ? 'jpg' : 'mp4';
+      const prepResponse = await fetch(`${API_BASE_URL}/download`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(API_KEY ? { 'X-Api-Key': API_KEY } : {}),
+        },
+        body: JSON.stringify({ url }),
+      });
+      const prepData = await prepResponse.json();
+      if (!prepResponse.ok) {
+        Alert.alert('Error', prepData.message || 'Could not prepare the download');
+        return;
+      }
+
+      setPreparing(false);
+      setDownloading(true);
+
+      const sourceUrl = prepData.download_url.startsWith('http')
+        ? prepData.download_url
+        : `${API_BASE_URL}${prepData.download_url}`;
+
+      const downloadHeaders = API_KEY ? { 'X-Api-Key': API_KEY } : {};
+      const extension = prepData.media_type === 'image' ? 'jpg' : 'mp4';
       const fileUri = FileSystem.documentDirectory + `${Date.now()}.${extension}`;
+
       const downloadResumable = FileSystem.createDownloadResumable(
-        result.video_url,
+        sourceUrl,
         fileUri,
-        {},
+        { headers: downloadHeaders },
         (progress) => {
           const pct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
           setDownloadProgress(pct);
@@ -86,10 +111,11 @@ export default function App() {
       const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
       await MediaLibrary.createAlbumAsync("Issam's Tube", asset, false);
 
-      Alert.alert('Saved', 'Video saved to your gallery.');
+      Alert.alert('Saved', 'Saved to your gallery in the best quality available.');
     } catch (err) {
       Alert.alert('Download failed', err.message);
     } finally {
+      setPreparing(false);
       setDownloading(false);
     }
   };
@@ -122,36 +148,42 @@ export default function App() {
           )}
         />
       ) : (
-      <>
-      <View style={{ marginBottom: 12 }}>
-        <Button title="Paste from clipboard" onPress={handlePasteFromClipboard} color="#666" />
-      </View>
+        <>
+          <View style={{ marginBottom: 12 }}>
+            <Button title="Paste from clipboard" onPress={handlePasteFromClipboard} color="#666" />
+          </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Paste video URL here"
-        value={url}
-        onChangeText={setUrl}
-        autoCapitalize="none"
-        autoCorrect={false}
-      />
-
-      <Button title="Fetch Video" onPress={handleFetch} disabled={!url || loading} />
-
-      {loading && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
-
-      {result && (
-        <View style={styles.resultCard}>
-          {result.thumbnail && <Image source={{ uri: result.thumbnail }} style={styles.thumbnail} />}
-          <Text style={styles.resultTitle}>{result.title}</Text>
-          <Button
-            title={downloading ? `Downloading... ${Math.round(downloadProgress * 100)}%` : 'Download Video'}
-            onPress={handleDownload}
-            disabled={downloading}
+          <TextInput
+            style={styles.input}
+            placeholder="Paste video URL here"
+            value={url}
+            onChangeText={setUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
-        </View>
-      )}
-      </>
+
+          <Button title="Fetch Video" onPress={handleFetch} disabled={!url || loading} />
+
+          {loading && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
+
+          {result && (
+            <View style={styles.resultCard}>
+              {result.thumbnail && <Image source={{ uri: result.thumbnail }} style={styles.thumbnail} />}
+              <Text style={styles.resultTitle}>{result.title}</Text>
+              <Button
+                title={
+                  preparing
+                    ? 'Preparing high-quality video…'
+                    : downloading
+                    ? `Downloading… ${Math.round(downloadProgress * 100)}%`
+                    : 'Download'
+                }
+                onPress={handleDownload}
+                disabled={preparing || downloading}
+              />
+            </View>
+          )}
+        </>
       )}
     </View>
   );
