@@ -106,6 +106,11 @@ public class YtDlpProcessRunner : IYtDlpRunner
 
 internal static class ExtractionLogic
 {
+    private static readonly HttpClient _httpClient = new();
+
+    private static readonly HashSet<string> _imageExtensions =
+        new(StringComparer.OrdinalIgnoreCase) { "jpg", "jpeg", "png", "gif", "webp" };
+
     internal static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> RunExtractionAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher)
     {
         if (string.IsNullOrWhiteSpace(request.Url) ||
@@ -184,7 +189,10 @@ internal static class ExtractionLogic
                 return (Results.BadRequest(new ErrorResponse("NO_PLAYABLE_URL", "yt-dlp returned metadata but no usable video URL was found.")), false, platform, title, thumbnail);
             }
 
-            return (Results.Ok(new ExtractResponse(videoUrl, title, thumbnail, "video", headers)), true, platform, title, thumbnail);
+            string? ext = root.TryGetProperty("ext", out var extElem) ? extElem.GetString() : null;
+            string mediaType = ext != null && _imageExtensions.Contains(ext) ? "image" : "video";
+
+            return (Results.Ok(new ExtractResponse(videoUrl, title, thumbnail, mediaType, headers)), true, platform, title, thumbnail);
         }
         catch (JsonException)
         {
@@ -221,26 +229,78 @@ internal static class ExtractionLogic
         var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
         var cookiesToUse = platform == "Instagram" && File.Exists(cookiesPath) ? cookiesPath : null;
 
+        // Run metadata first to detect whether this is an image post or a video post.
+        // Instagram reels → video path. Instagram photo posts → image path.
+        var metaRun = await runner.RunAsync(request.Url, cookiesToUse);
+
+        if (metaRun.StartError != null)
+            return Results.Problem(
+                detail: $"Could not start yt-dlp: {metaRun.StartError}",
+                title: "YTDLP_NOT_FOUND",
+                statusCode: StatusCodes.Status500InternalServerError);
+
+        if (metaRun.TimedOut)
+            return Results.Problem(
+                detail: "The request timed out while reading media metadata.",
+                title: "TIMEOUT",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+
+        if (metaRun.ExitCode != 0)
+        {
+            var (errCode, errMsg) = ClassifyError(metaRun.Stderr);
+            return Results.BadRequest(new ErrorResponse(errCode, errMsg));
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metaRun.Stdout);
+            var root = doc.RootElement;
+
+            string? ext = root.TryGetProperty("ext", out var extElem) ? extElem.GetString() : null;
+
+            if (ext != null && _imageExtensions.Contains(ext))
+            {
+                // ── Image path ────────────────────────────────────────────
+                string? imageUrl = root.TryGetProperty("url", out var u) ? u.GetString() : null;
+
+                if (string.IsNullOrEmpty(imageUrl))
+                    return Results.BadRequest(new ErrorResponse("NO_PLAYABLE_URL", "Could not find image URL in yt-dlp output."));
+
+                var imageFileName = $"{Guid.NewGuid()}.jpg";
+                var imagePath = Path.Combine(downloadsDirectory, imageFileName);
+
+                using var httpReq = new HttpRequestMessage(HttpMethod.Get, imageUrl);
+                var imgHeaders = ExtractHeaders(root);
+                if (imgHeaders != null)
+                    foreach (var h in imgHeaders)
+                        httpReq.Headers.TryAddWithoutValidation(h.Key, h.Value);
+
+                var httpResp = await _httpClient.SendAsync(httpReq);
+                httpResp.EnsureSuccessStatusCode();
+                await File.WriteAllBytesAsync(imagePath, await httpResp.Content.ReadAsByteArrayAsync());
+
+                return Results.Ok(new DownloadResponse($"/files/{imageFileName}", "image"));
+            }
+        }
+        catch (JsonException) { /* fall through to video path */ }
+
+        // ── Video path ────────────────────────────────────────────────────
         var fileName = $"{Guid.NewGuid()}.mp4";
         var outputPath = Path.Combine(downloadsDirectory, fileName);
 
         var run = await runner.DownloadAsync(request.Url, cookiesToUse, outputPath);
 
         if (run.StartError != null)
-        {
             return Results.Problem(
                 detail: $"Could not start yt-dlp: {run.StartError}",
                 title: "YTDLP_NOT_FOUND",
                 statusCode: StatusCodes.Status500InternalServerError);
-        }
 
         if (run.TimedOut)
-        {
             return Results.Problem(
                 detail: "The download took too long.",
                 title: "TIMEOUT",
                 statusCode: StatusCodes.Status504GatewayTimeout);
-        }
 
         if (run.ExitCode != 0 || !File.Exists(outputPath))
         {
