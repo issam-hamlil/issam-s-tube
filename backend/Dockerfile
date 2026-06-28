@@ -22,4 +22,6 @@ ENV DB_PATH=/app/data/history.db
 ENV LOG_PATH=/app/logs/issamstube-.log
 EXPOSE 8080
 
+RUN mkdir -p /app/data /app/logs
+
 ENTRYPOINT ["dotnet", "IssamsTube.Api.dll"]
