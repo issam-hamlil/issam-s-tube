@@ -5,7 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Clipboard from 'expo-clipboard';
 
-const API_BASE_URL = 'issams-tube-backend-production.up.railway.app'; // your computer's LAN IP — see note below
+const API_BASE_URL = 'https://issams-tube-backend-production.up.railway.app';
 const API_KEY = 'my-super-secret-key-2017'; // fill in once Phase 8's middleware is live
 
 export default function App() {
