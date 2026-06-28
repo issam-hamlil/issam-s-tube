@@ -173,10 +173,10 @@ export default function App() {
               <Button
                 title={
                   preparing
-                    ? 'Preparing high-quality video…'
+                    ? (result.media_type === 'image' ? 'Preparing photo…' : 'Preparing high-quality video…')
                     : downloading
                       ? `Downloading… ${Math.round(downloadProgress * 100)}%`
-                      : 'Download'
+                      : (result.media_type === 'image' ? 'Save Photo' : 'Save Video')
                 }
                 onPress={handleDownload}
                 disabled={preparing || downloading}
