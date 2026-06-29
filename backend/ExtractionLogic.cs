@@ -239,22 +239,23 @@ internal static class ExtractionLogic
                 statusCode: StatusCodes.Status500InternalServerError), false, platform, null, null);
         }
 
-        if (run.TimedOut)
+        if (run.TimedOut || run.ExitCode != 0)
         {
-            return (Results.Problem(
-                detail: "yt-dlp did not respond in time.",
-                title: "TIMEOUT",
-                statusCode: StatusCodes.Status504GatewayTimeout), false, platform, null, null);
-        }
-
-        if (run.ExitCode != 0)
-        {
-            if (platform == "Instagram" && run.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase))
+            if (platform == "Instagram" && (run.TimedOut || run.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase)))
             {
                 var downloadsDir = Path.Combine(AppContext.BaseDirectory, "downloads");
                 Directory.CreateDirectory(downloadsDir);
                 return await TryInstagramImageFallbackAsync(request.Url, instaloaderRunner, cookiesToUse, platform, downloadsDir);
             }
+            
+            if (run.TimedOut)
+            {
+                return (Results.Problem(
+                    detail: "yt-dlp did not respond in time.",
+                    title: "TIMEOUT",
+                    statusCode: StatusCodes.Status504GatewayTimeout), false, platform, null, null);
+            }
+
             var (code, message) = ClassifyError(run.Stderr);
             return (Results.BadRequest(new ErrorResponse(code, message)), false, platform, null, null);
         }
@@ -337,15 +338,9 @@ internal static class ExtractionLogic
                 title: "YTDLP_NOT_FOUND",
                 statusCode: StatusCodes.Status500InternalServerError);
 
-        if (metaRun.TimedOut)
-            return Results.Problem(
-                detail: "The request timed out while reading media metadata.",
-                title: "TIMEOUT",
-                statusCode: StatusCodes.Status504GatewayTimeout);
-
-        if (metaRun.ExitCode != 0)
+        if (metaRun.TimedOut || metaRun.ExitCode != 0)
         {
-            if (platform == "Instagram" && metaRun.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase))
+            if (platform == "Instagram" && (metaRun.TimedOut || metaRun.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase)))
             {
                 var (fallbackResult, fallbackSuccess, _, _, fallbackUrl) =
                     await TryInstagramImageFallbackAsync(request.Url, instaloaderRunner, cookiesToUse, platform, downloadsDirectory);
@@ -353,6 +348,15 @@ internal static class ExtractionLogic
                     ? Results.Ok(new DownloadResponse(fallbackUrl!, "image"))
                     : fallbackResult;
             }
+
+            if (metaRun.TimedOut)
+            {
+                return Results.Problem(
+                    detail: "The request timed out while reading media metadata.",
+                    title: "TIMEOUT",
+                    statusCode: StatusCodes.Status504GatewayTimeout);
+            }
+
             var (errCode, errMsg) = ClassifyError(metaRun.Stderr);
             return Results.BadRequest(new ErrorResponse(errCode, errMsg));
         }
