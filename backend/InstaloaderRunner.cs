@@ -21,24 +21,24 @@ public class InstaloaderRunner : IInstaloaderRunner
 
         var psi = new ProcessStartInfo
         {
-            FileName = "instaloader",
+            FileName = "gallery-dl",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
 
-        psi.ArgumentList.Add("--dirname-pattern");
+        psi.ArgumentList.Add("--directory");
         psi.ArgumentList.Add(workDir);
 
         if (!string.IsNullOrEmpty(cookiesPath) && File.Exists(cookiesPath))
         {
-            // Note: instaloader doesn't easily consume a raw cookies.txt file 
-            // without a specific session file setup, but it may pick it up or we pass it if supported
+            psi.ArgumentList.Add("--cookies");
+            psi.ArgumentList.Add(cookiesPath);
         }
 
         psi.ArgumentList.Add("--");
-        psi.ArgumentList.Add("-" + shortcode);
+        psi.ArgumentList.Add(postUrl);
 
         using var process = new Process { StartInfo = psi };
 
