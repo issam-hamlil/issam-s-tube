@@ -168,7 +168,7 @@ public class ExtractionLogicTests
         File.WriteAllBytes(tempFile, new byte[] { 0xFF, 0xD8 }); // minimal fake JPEG bytes
         mockInstaloader
             .Setup(r => r.DownloadAsync(It.IsAny<string>(), It.IsAny<string?>()))
-            .ReturnsAsync(new InstaloaderResult(0, "", "", tempFile, null, false));
+            .ReturnsAsync(new InstaloaderResult(0, "", "", new List<string> { tempFile }, null, false));
 
         var request = new ExtractRequest("https://www.instagram.com/p/DaHKUWNjhjR/");
 
