@@ -21,28 +21,24 @@ public class InstaloaderRunner : IInstaloaderRunner
 
         var psi = new ProcessStartInfo
         {
-            FileName = "instaloader",
+            FileName = "gallery-dl",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
 
-        psi.ArgumentList.Add("--no-videos");
-        psi.ArgumentList.Add("--no-metadata-json");
-        psi.ArgumentList.Add("--no-captions");
-        psi.ArgumentList.Add("--no-profile-pic");
-        psi.ArgumentList.Add("--dirname-pattern");
+        psi.ArgumentList.Add("--directory");
         psi.ArgumentList.Add(workDir);
 
         if (!string.IsNullOrEmpty(cookiesPath) && File.Exists(cookiesPath))
         {
-            psi.ArgumentList.Add("--cookiefile");
+            psi.ArgumentList.Add("--cookies");
             psi.ArgumentList.Add(cookiesPath);
         }
 
         psi.ArgumentList.Add("--");
-        psi.ArgumentList.Add($"-{shortcode}");
+        psi.ArgumentList.Add(postUrl);
 
         using var process = new Process { StartInfo = psi };
 
