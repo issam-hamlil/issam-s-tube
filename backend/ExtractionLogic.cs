@@ -201,7 +201,7 @@ internal static class ExtractionLogic
         return null;
     }
 
-    internal static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> RunExtractionAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher)
+    internal static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> RunExtractionAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher, IInstaloaderRunner instaloaderRunner)
     {
         if (string.IsNullOrWhiteSpace(request.Url) ||
             !Uri.TryCreate(request.Url, UriKind.Absolute, out var parsedUrl) ||
@@ -249,13 +249,11 @@ internal static class ExtractionLogic
 
         if (run.ExitCode != 0)
         {
-            // yt-dlp cannot extract Instagram photo posts. Try scraping the
-            // embed page (public, no auth) then fall back to the session page.
-            if (platform == "Instagram")
+            if (platform == "Instagram" && run.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase))
             {
-                var (imgUrl, imgTitle) = await FetchInstagramImageAsync(request.Url, cookiesToUse);
-                if (imgUrl != null)
-                    return (Results.Ok(new ExtractResponse(imgUrl, imgTitle ?? "Instagram post", imgUrl, "image", null)), true, platform, imgTitle, imgUrl);
+                var downloadsDir = Path.Combine(AppContext.BaseDirectory, "downloads");
+                Directory.CreateDirectory(downloadsDir);
+                return await TryInstagramImageFallbackAsync(request.Url, instaloaderRunner, cookiesToUse, platform, downloadsDir);
             }
             var (code, message) = ClassifyError(run.Stderr);
             return (Results.BadRequest(new ErrorResponse(code, message)), false, platform, null, null);
@@ -303,7 +301,7 @@ internal static class ExtractionLogic
         }
     }
 
-    public static async Task<IResult> DownloadVideoAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher, string downloadsDirectory)
+    public static async Task<IResult> DownloadVideoAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher, IInstaloaderRunner instaloaderRunner, string downloadsDirectory)
     {
         if (string.IsNullOrWhiteSpace(request.Url) ||
             !Uri.TryCreate(request.Url, UriKind.Absolute, out var parsedUrl) ||
@@ -347,20 +345,13 @@ internal static class ExtractionLogic
 
         if (metaRun.ExitCode != 0)
         {
-            if (platform == "Instagram")
+            if (platform == "Instagram" && metaRun.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase))
             {
-                var (imgUrl, _) = await FetchInstagramImageAsync(request.Url, cookiesToUse);
-                if (imgUrl != null)
-                {
-                    var imageFileName = $"{Guid.NewGuid()}.jpg";
-                    var imagePath = Path.Combine(downloadsDirectory, imageFileName);
-                    using var dlReq = new HttpRequestMessage(HttpMethod.Get, imgUrl);
-                    dlReq.Headers.TryAddWithoutValidation("Referer", "https://www.instagram.com/");
-                    var dlResp = await _httpClient.SendAsync(dlReq);
-                    dlResp.EnsureSuccessStatusCode();
-                    await File.WriteAllBytesAsync(imagePath, await dlResp.Content.ReadAsByteArrayAsync());
-                    return Results.Ok(new DownloadResponse($"/files/{imageFileName}", "image"));
-                }
+                var (fallbackResult, fallbackSuccess, _, _, fallbackUrl) =
+                    await TryInstagramImageFallbackAsync(request.Url, instaloaderRunner, cookiesToUse, platform, downloadsDirectory);
+                return fallbackSuccess
+                    ? Results.Ok(new DownloadResponse(fallbackUrl!, "image"))
+                    : fallbackResult;
             }
             var (errCode, errMsg) = ClassifyError(metaRun.Stderr);
             return Results.BadRequest(new ErrorResponse(errCode, errMsg));
@@ -470,78 +461,38 @@ internal static class ExtractionLogic
         return Results.Ok(new DownloadResponse($"/files/{fileName}", "audio"));
     }
 
-    // ── Instagram image scraper ────────────────────────────────────────────
-    // yt-dlp cannot extract photo posts. We hit the /embed/captioned/ URL
-    // (public, no auth for public posts) and look for the display_url or a
-    // CDN image src embedded in the page JSON/HTML.
-    static async Task<(string? url, string? title)> FetchInstagramImageAsync(string postUrl, string? cookiesPath)
+    private static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> TryInstagramImageFallbackAsync(
+        string postUrl, IInstaloaderRunner instaloaderRunner, string? cookiesPath, string platform, string downloadsDirectory)
     {
-        try
-        {
-            var sc = Regex.Match(postUrl, @"/(?:p|reel)/([A-Za-z0-9_-]+)").Groups[1].Value;
-            if (string.IsNullOrEmpty(sc)) return (null, null);
+        var result = await instaloaderRunner.DownloadAsync(postUrl, cookiesPath);
 
-            // 1 — embed URL (no cookies required for public posts)
-            var (eu, et) = await ScrapeUrl(
-                $"https://www.instagram.com/p/{sc}/embed/captioned/", null);
-            if (eu != null) return (eu, et);
+        if (result.StartError != null)
+            return (Results.Problem(
+                detail: $"Could not start instaloader: {result.StartError}",
+                title: "INSTALOADER_NOT_FOUND",
+                statusCode: StatusCodes.Status500InternalServerError), false, platform, null, null);
 
-            // 2 — main post page with session cookies
-            var cookie = BuildInstagramCookieHeader(cookiesPath);
-            if (!string.IsNullOrEmpty(cookie))
-                return await ScrapeUrl(postUrl, cookie);
-        }
-        catch { /* best effort */ }
-        return (null, null);
-    }
+        if (result.TimedOut)
+            return (Results.Problem(
+                detail: "instaloader did not respond in time.",
+                title: "TIMEOUT",
+                statusCode: StatusCodes.Status504GatewayTimeout), false, platform, null, null);
 
-    static async Task<(string? url, string? title)> ScrapeUrl(string url, string? cookieHeader)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.TryAddWithoutValidation("User-Agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36");
-        req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
-        req.Headers.TryAddWithoutValidation("Referer", "https://www.instagram.com/");
-        if (!string.IsNullOrEmpty(cookieHeader))
-            req.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+        if (result.ImagePath == null)
+            return (Results.BadRequest(new ErrorResponse("INSTAGRAM_IMAGE_UNAVAILABLE",
+                "This looks like an Instagram photo post, but it couldn't be retrieved. " +
+                "It may need a fresh cookies.txt — try re-exporting it from your browser.")),
+                false, platform, null, null);
 
-        var resp = await _httpClient.SendAsync(req);
-        if (!resp.IsSuccessStatusCode) return (null, null);
-        var html = await resp.Content.ReadAsStringAsync();
+        Directory.CreateDirectory(downloadsDirectory);
+        var fileName = $"{Guid.NewGuid()}{Path.GetExtension(result.ImagePath)}";
+        var destPath = Path.Combine(downloadsDirectory, fileName);
+        File.Copy(result.ImagePath, destPath, overwrite: true);
+        try { Directory.Delete(Path.GetDirectoryName(result.ImagePath)!, recursive: true); } catch { }
 
-        // display_url in embedded JSON (Instagram embed page)
-        var m = Regex.Match(html, @"""display_url"":""(https:[^""]+)""");
-        if (m.Success)
-            return (UnescapeUrl(m.Groups[1].Value), ExtractTitle(html));
-
-        // og:image meta tag (authenticated main page)
-        m = Regex.Match(html, @"<meta[^>]+property=""og:image""[^>]+content=""([^""]+)""", RegexOptions.IgnoreCase);
-        if (!m.Success)
-            m = Regex.Match(html, @"<meta[^>]+content=""([^""]+)""[^>]+property=""og:image""", RegexOptions.IgnoreCase);
-        if (m.Success)
-            return (WebUtility.HtmlDecode(m.Groups[1].Value), ExtractTitle(html));
-
-        return (null, null);
-    }
-
-    static string UnescapeUrl(string s) =>
-        s.Replace("\\/", "/").Replace("\\u0026", "&");
-
-    static string? ExtractTitle(string html)
-    {
-        var m = Regex.Match(html, @"<title>([^<]+)</title>", RegexOptions.IgnoreCase);
-        return m.Success ? WebUtility.HtmlDecode(m.Groups[1].Value) : null;
-    }
-
-    static string BuildInstagramCookieHeader(string? path)
-    {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return "";
-        var parts = File.ReadLines(path)
-            .Where(l => !l.StartsWith('#') && l.Contains("instagram"))
-            .Select(l => l.Split('\t'))
-            .Where(p => p.Length >= 7)
-            .Select(p => $"{p[5]}={p[6]}");
-        return string.Join("; ", parts);
+        var fileUrl = $"/files/{fileName}";
+        return (Results.Ok(new ExtractResponse(fileUrl, "Instagram photo", fileUrl, "image", null)),
+            true, platform, "Instagram photo", fileUrl);
     }
 
     static Dictionary<string, string>? ExtractHeaders(JsonElement element)
@@ -591,9 +542,6 @@ internal static class ExtractionLogic
 
         if (lower.Contains("certificate") || lower.Contains("ssl") || lower.Contains("connection aborted") || lower.Contains("forcibly closed"))
             return ("NETWORK_ERROR", "A network/SSL error occurred while reaching the platform.");
-
-        if (lower.Contains("no video formats found"))
-            return ("INSTAGRAM_PHOTO_UNSUPPORTED", "Instagram photo posts cannot be downloaded at this time. yt-dlp's Instagram extractor does not support static image posts. Try an Instagram Reel or video instead.");
 
         var firstLine = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                               .FirstOrDefault(l => l.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase))

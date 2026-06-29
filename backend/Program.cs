@@ -23,6 +23,7 @@ builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite($"Data 
 
 builder.Services.AddSingleton<IYtDlpRunner, YtDlpProcessRunner>();
 builder.Services.AddHttpClient<ILinkedInImageFetcher, LinkedInImageFetcher>();
+builder.Services.AddSingleton<IInstaloaderRunner, InstaloaderRunner>();
 
 var app = builder.Build();
 
@@ -76,7 +77,7 @@ app.MapGet("/history", async (AppDbContext db) =>
     return Results.Ok(recent);
 });
 
-app.MapPost("/download", async (ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher) =>
+app.MapPost("/download", async (ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher, IInstaloaderRunner instaloaderRunner) =>
 {
     var downloadsDir = Path.Combine(AppContext.BaseDirectory, "downloads");
     Directory.CreateDirectory(downloadsDir);
@@ -91,7 +92,7 @@ app.MapPost("/download", async (ExtractRequest request, IYtDlpRunner runner, ILi
         }
     }
 
-    return await ExtractionLogic.DownloadVideoAsync(request, runner, linkedInFetcher, downloadsDir);
+    return await ExtractionLogic.DownloadVideoAsync(request, runner, linkedInFetcher, instaloaderRunner, downloadsDir);
 });
 
 app.MapPost("/audio", async (ExtractRequest request, IYtDlpRunner runner) =>
@@ -110,10 +111,10 @@ app.MapPost("/audio", async (ExtractRequest request, IYtDlpRunner runner) =>
     return await ExtractionLogic.DownloadAudioAsync(request, runner, downloadsDir);
 });
 
-app.MapPost("/extract", async (ExtractRequest request, AppDbContext db, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher) =>
+app.MapPost("/extract", async (ExtractRequest request, AppDbContext db, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher, IInstaloaderRunner instaloaderRunner) =>
 {
     var stopwatch = Stopwatch.StartNew();
-    var (result, success, platform, title, thumbnail) = await ExtractionLogic.RunExtractionAsync(request, runner, linkedInFetcher);
+    var (result, success, platform, title, thumbnail) = await ExtractionLogic.RunExtractionAsync(request, runner, linkedInFetcher, instaloaderRunner);
     stopwatch.Stop();
 
     var urlForLog = !string.IsNullOrEmpty(request.Url) && request.Url.Length > 60

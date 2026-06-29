@@ -12,7 +12,7 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 python3-pip ffmpeg && \
-    pip install --break-system-packages --no-cache-dir "yt-dlp[default,curl-cffi]" && \
+    pip install --break-system-packages --no-cache-dir "yt-dlp[default,curl-cffi]" instaloader && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app .
