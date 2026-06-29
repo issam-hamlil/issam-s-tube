@@ -1,21 +1,29 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, Button, Image, ActivityIndicator, Alert, FlatList } from 'react-native';
-//import * as FileSystem from 'expo-file-system';
+import { StyleSheet, Text, View, TextInput, Button, Image, ActivityIndicator, Alert, FlatList, TouchableOpacity } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Clipboard from 'expo-clipboard';
 
 const API_BASE_URL = 'https://issams-tube-backend-production.up.railway.app';
-const API_KEY = 'my-super-secret-key-2017'; // fill in once Phase 8's middleware is live
+const API_KEY = 'my-super-secret-key-2017';
 
 export default function App() {
+  // ── Video screen state ────────────────────────────────────────
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [preparing, setPreparing] = useState(false);
-  const [screen, setScreen] = useState('home'); // 'home' | 'history'
+
+  // ── Audio screen state ────────────────────────────────────────
+  const [audioUrl, setAudioUrl] = useState('');
+  const [audioExtracting, setAudioExtracting] = useState(false);
+  const [audioDownloading, setAudioDownloading] = useState(false);
+  const [audioProgress, setAudioProgress] = useState(0);
+
+  // ── Navigation ────────────────────────────────────────────────
+  const [screen, setScreen] = useState('home'); // 'home' | 'audio' | 'history'
   const [history, setHistory] = useState([]);
 
   const loadHistory = async () => {
@@ -34,6 +42,7 @@ export default function App() {
     if (screen === 'history') loadHistory();
   }, [screen]);
 
+  // ── Video handlers ────────────────────────────────────────────
   const handleFetch = async () => {
     setLoading(true);
     setResult(null);
@@ -125,29 +134,101 @@ export default function App() {
     if (text) setUrl(text);
   };
 
+  // ── Audio handler ─────────────────────────────────────────────
+  const handleAudioExtract = async () => {
+    if (!audioUrl) return;
+
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow access to save audio to your device.');
+      return;
+    }
+
+    setAudioExtracting(true);
+    setAudioProgress(0);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/audio`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(API_KEY ? { 'X-Api-Key': API_KEY } : {}),
+        },
+        body: JSON.stringify({ url: audioUrl }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        Alert.alert('Error', data.message || 'Could not extract audio.');
+        return;
+      }
+
+      setAudioExtracting(false);
+      setAudioDownloading(true);
+
+      const sourceUrl = data.download_url.startsWith('http')
+        ? data.download_url
+        : `${API_BASE_URL}${data.download_url}`;
+
+      const fileUri = FileSystem.documentDirectory + `${Date.now()}.mp3`;
+
+      const downloadResumable = FileSystem.createDownloadResumable(
+        sourceUrl,
+        fileUri,
+        { headers: API_KEY ? { 'X-Api-Key': API_KEY } : {} },
+        (progress) => {
+          const pct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
+          setAudioProgress(pct);
+        }
+      );
+
+      const downloadResult = await downloadResumable.downloadAsync();
+      const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+      await MediaLibrary.createAlbumAsync("Issam's Tube", asset, false);
+
+      Alert.alert('Saved', 'MP3 (HD quality) saved to your device.');
+    } catch (err) {
+      Alert.alert('Extraction failed', err.message);
+    } finally {
+      setAudioExtracting(false);
+      setAudioDownloading(false);
+    }
+  };
+
+  const handleAudioPaste = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) setAudioUrl(text);
+  };
+
+  // ── Render ────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <Text style={styles.title}>Issam's Tube</Text>
-        <Button
-          title={screen === 'home' ? 'History' : 'Home'}
-          onPress={() => setScreen(screen === 'home' ? 'history' : 'home')}
-        />
+      {/* Header */}
+      <Text style={styles.title}>Issam's Tube</Text>
+
+      {/* Tab bar */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tab, screen === 'home' && styles.tabActive]}
+          onPress={() => setScreen('home')}
+        >
+          <Text style={[styles.tabText, screen === 'home' && styles.tabTextActive]}>📹 Video</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, screen === 'audio' && styles.tabActive]}
+          onPress={() => setScreen('audio')}
+        >
+          <Text style={[styles.tabText, screen === 'audio' && styles.tabTextActive]}>🎵 MP3 HD</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, screen === 'history' && styles.tabActive]}
+          onPress={() => setScreen('history')}
+        >
+          <Text style={[styles.tabText, screen === 'history' && styles.tabTextActive]}>🕐 History</Text>
+        </TouchableOpacity>
       </View>
 
-      {screen === 'history' ? (
-        <FlatList
-          data={history}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <View style={styles.historyRow}>
-              <Text style={styles.historyPlatform}>{platformLabel(item.platform)}</Text>
-              <Text style={styles.historyTitle} numberOfLines={1}>{item.title ?? item.url}</Text>
-              <Text style={styles.historyStatus}>{item.success ? '✅' : '❌'}</Text>
-            </View>
-          )}
-        />
-      ) : (
+      {/* ── Video screen ── */}
+      {screen === 'home' && (
         <>
           <View style={{ marginBottom: 12 }}>
             <Button title="Paste from clipboard" onPress={handlePasteFromClipboard} color="#666" />
@@ -185,6 +266,70 @@ export default function App() {
           )}
         </>
       )}
+
+      {/* ── Audio screen ── */}
+      {screen === 'audio' && (
+        <>
+          <View style={styles.audioHeader}>
+            <Text style={styles.audioSubtitle}>Extract HD audio from any video link</Text>
+            <Text style={styles.audioNote}>YouTube · Instagram · TikTok · X · Facebook</Text>
+          </View>
+
+          <View style={{ marginBottom: 12 }}>
+            <Button title="Paste from clipboard" onPress={handleAudioPaste} color="#666" />
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Paste video URL here"
+            value={audioUrl}
+            onChangeText={setAudioUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <View style={styles.extractBtn}>
+            <Button
+              title={
+                audioExtracting
+                  ? 'Extracting audio… (this may take a minute)'
+                  : audioDownloading
+                    ? `Downloading MP3… ${Math.round(audioProgress * 100)}%`
+                    : '🎵 Extract MP3 HD'
+              }
+              onPress={handleAudioExtract}
+              disabled={!audioUrl || audioExtracting || audioDownloading}
+              color="#7c3aed"
+            />
+          </View>
+
+          {(audioExtracting || audioDownloading) && (
+            <View style={styles.audioProgress}>
+              <ActivityIndicator size="large" color="#7c3aed" />
+              <Text style={styles.audioProgressText}>
+                {audioExtracting
+                  ? 'Server is downloading and converting to MP3…'
+                  : `Saving to your device… ${Math.round(audioProgress * 100)}%`}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* ── History screen ── */}
+      {screen === 'history' && (
+        <FlatList
+          data={history}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item }) => (
+            <View style={styles.historyRow}>
+              <Text style={styles.historyPlatform}>{platformLabel(item.platform)}</Text>
+              <Text style={styles.historyTitle} numberOfLines={1}>{item.title ?? item.url}</Text>
+              <Text style={styles.historyStatus}>{item.success ? '✅' : '❌'}</Text>
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 }
@@ -202,12 +347,33 @@ function platformLabel(platform) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 80, paddingHorizontal: 20, backgroundColor: '#fff' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
+  container: { flex: 1, paddingTop: 60, paddingHorizontal: 20, backgroundColor: '#fff' },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
+
+  // Tab bar
+  tabBar: { flexDirection: 'row', marginBottom: 20, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: '#e5e7eb' },
+  tab: { flex: 1, paddingVertical: 10, alignItems: 'center', backgroundColor: '#f9fafb' },
+  tabActive: { backgroundColor: '#7c3aed' },
+  tabText: { fontSize: 13, fontWeight: '600', color: '#6b7280' },
+  tabTextActive: { color: '#fff' },
+
+  // Shared
   input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12, marginBottom: 12 },
+
+  // Video screen
   resultCard: { marginTop: 24, alignItems: 'center' },
   thumbnail: { width: 200, height: 200, borderRadius: 8, marginBottom: 12 },
   resultTitle: { fontSize: 16, marginBottom: 12, textAlign: 'center' },
+
+  // Audio screen
+  audioHeader: { marginBottom: 20, alignItems: 'center' },
+  audioSubtitle: { fontSize: 15, fontWeight: '600', color: '#374151', marginBottom: 4 },
+  audioNote: { fontSize: 12, color: '#9ca3af' },
+  extractBtn: { marginBottom: 8 },
+  audioProgress: { marginTop: 24, alignItems: 'center', gap: 12 },
+  audioProgressText: { fontSize: 13, color: '#7c3aed', textAlign: 'center' },
+
+  // History
   historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
   historyPlatform: { width: 110, fontSize: 13 },
   historyTitle: { flex: 1, fontSize: 13 },

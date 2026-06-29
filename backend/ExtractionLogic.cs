@@ -12,6 +12,7 @@ public interface IYtDlpRunner
 {
     Task<YtDlpRunResult> RunAsync(string url, string? cookiesPath);
     Task<YtDlpRunResult> DownloadAsync(string url, string? cookiesPath, string outputPath);
+    Task<YtDlpRunResult> AudioAsync(string url, string? cookiesPath, string outputPath);
 }
 
 public class YtDlpProcessRunner : IYtDlpRunner
@@ -43,6 +44,28 @@ public class YtDlpProcessRunner : IYtDlpRunner
         psi.ArgumentList.Add("bestvideo+bestaudio/best");
         psi.ArgumentList.Add("--merge-output-format");
         psi.ArgumentList.Add("mp4");
+        psi.ArgumentList.Add("-o");
+        psi.ArgumentList.Add(outputPath);
+
+        AddCookiesAndUrl(psi, cookiesPath, url);
+        return ExecuteAsync(psi, TimeSpan.FromMinutes(10));
+    }
+
+    public Task<YtDlpRunResult> AudioAsync(string url, string? cookiesPath, string outputPath)
+    {
+        var psi = BasePsi();
+
+        // Extract the best available audio stream and re-encode to MP3 at
+        // VBR quality 0 (the highest setting — roughly 220-260 kbps, which
+        // outperforms 320 kbps CBR in perceptual quality while staying
+        // smaller). Requires ffmpeg to be in PATH for the conversion step.
+        psi.ArgumentList.Add("-f");
+        psi.ArgumentList.Add("bestaudio/best");
+        psi.ArgumentList.Add("-x");
+        psi.ArgumentList.Add("--audio-format");
+        psi.ArgumentList.Add("mp3");
+        psi.ArgumentList.Add("--audio-quality");
+        psi.ArgumentList.Add("0");
         psi.ArgumentList.Add("-o");
         psi.ArgumentList.Add(outputPath);
 
@@ -309,6 +332,49 @@ internal static class ExtractionLogic
         }
 
         return Results.Ok(new DownloadResponse($"/files/{fileName}", "video"));
+    }
+
+    public static async Task<IResult> DownloadAudioAsync(ExtractRequest request, IYtDlpRunner runner, string downloadsDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(request.Url) ||
+            !Uri.TryCreate(request.Url, UriKind.Absolute, out var parsedUrl) ||
+            (parsedUrl.Scheme != Uri.UriSchemeHttp && parsedUrl.Scheme != Uri.UriSchemeHttps))
+        {
+            return Results.BadRequest(new ErrorResponse("INVALID_URL", "The provided URL is missing or not a valid http(s) URL."));
+        }
+
+        string platform = DetectPlatform(parsedUrl);
+
+        if (platform == "LinkedIn")
+            return Results.BadRequest(new ErrorResponse("UNSUPPORTED_PLATFORM", "Audio extraction is not supported for LinkedIn posts."));
+
+        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
+        var cookiesToUse = platform == "Instagram" && File.Exists(cookiesPath) ? cookiesPath : null;
+
+        var fileName = $"{Guid.NewGuid()}.mp3";
+        var outputPath = Path.Combine(downloadsDirectory, fileName);
+
+        var run = await runner.AudioAsync(request.Url, cookiesToUse, outputPath);
+
+        if (run.StartError != null)
+            return Results.Problem(
+                detail: $"Could not start yt-dlp: {run.StartError}",
+                title: "YTDLP_NOT_FOUND",
+                statusCode: StatusCodes.Status500InternalServerError);
+
+        if (run.TimedOut)
+            return Results.Problem(
+                detail: "Audio extraction took too long.",
+                title: "TIMEOUT",
+                statusCode: StatusCodes.Status504GatewayTimeout);
+
+        if (run.ExitCode != 0 || !File.Exists(outputPath))
+        {
+            var (code, message) = ClassifyError(run.Stderr);
+            return Results.BadRequest(new ErrorResponse(code, message));
+        }
+
+        return Results.Ok(new DownloadResponse($"/files/{fileName}", "audio"));
     }
 
     static Dictionary<string, string>? ExtractHeaders(JsonElement element)
