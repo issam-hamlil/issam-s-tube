@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 public record YtDlpRunResult(int ExitCode, string Stdout, string Stderr, bool TimedOut, string? StartError);
 
@@ -134,6 +136,71 @@ internal static class ExtractionLogic
     private static readonly HashSet<string> _imageExtensions =
         new(StringComparer.OrdinalIgnoreCase) { "jpg", "jpeg", "png", "gif", "webp" };
 
+    // Returns true when the yt-dlp JSON object describes a still image rather
+    // than a video. Checks four independent signals so that any one of them
+    // is sufficient — Instagram is inconsistent about which fields it fills.
+    static bool IsImagePost(JsonElement root)
+    {
+        // 1. ext field at the root level
+        if (root.TryGetProperty("ext", out var extElem) &&
+            _imageExtensions.Contains(extElem.GetString() ?? ""))
+            return true;
+
+        // 2. vcodec = "none" at root + a URL present (CDN image, no video track)
+        if (root.TryGetProperty("vcodec", out var vcRoot) &&
+            (vcRoot.GetString() ?? "") == "none" &&
+            root.TryGetProperty("url", out _))
+            return true;
+
+        // 3. formats array — image if every entry has vcodec = "none"
+        //    or at least one entry has an image ext
+        if (root.TryGetProperty("formats", out var fmts) &&
+            fmts.ValueKind == JsonValueKind.Array &&
+            fmts.GetArrayLength() > 0)
+        {
+            bool anyVideo = false;
+            bool anyImageExt = false;
+            foreach (var f in fmts.EnumerateArray())
+            {
+                var vc = f.TryGetProperty("vcodec", out var vce) ? vce.GetString() ?? "" : "";
+                if (vc != "none" && vc != "") anyVideo = true;
+                var fe = f.TryGetProperty("ext", out var fee) ? fee.GetString() ?? "" : "";
+                if (_imageExtensions.Contains(fe)) anyImageExt = true;
+            }
+            if (anyImageExt) return true;
+            if (!anyVideo) return true; // all formats are audio-only / image
+        }
+
+        // 4. raw URL ends with an image extension (before the query string)
+        if (root.TryGetProperty("url", out var rawUrlElem))
+        {
+            var path = (rawUrlElem.GetString() ?? "").Split('?')[0].ToLowerInvariant();
+            if (path.EndsWith(".jpg") || path.EndsWith(".jpeg") ||
+                path.EndsWith(".png") || path.EndsWith(".webp") ||
+                path.EndsWith(".gif"))
+                return true;
+        }
+
+        return false;
+    }
+
+    // Picks the best image URL from the JSON object.
+    static string? PickImageUrl(JsonElement root)
+    {
+        if (root.TryGetProperty("url", out var u) && !string.IsNullOrEmpty(u.GetString()))
+            return u.GetString();
+
+        if (root.TryGetProperty("formats", out var fmts) &&
+            fmts.ValueKind == JsonValueKind.Array &&
+            fmts.GetArrayLength() > 0)
+        {
+            var best = fmts[fmts.GetArrayLength() - 1];
+            if (best.TryGetProperty("url", out var fu)) return fu.GetString();
+        }
+
+        return null;
+    }
+
     internal static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> RunExtractionAsync(ExtractRequest request, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher)
     {
         if (string.IsNullOrWhiteSpace(request.Url) ||
@@ -182,13 +249,24 @@ internal static class ExtractionLogic
 
         if (run.ExitCode != 0)
         {
+            // yt-dlp cannot extract Instagram photo posts. Try scraping the
+            // embed page (public, no auth) then fall back to the session page.
+            if (platform == "Instagram")
+            {
+                var (imgUrl, imgTitle) = await FetchInstagramImageAsync(request.Url, cookiesToUse);
+                if (imgUrl != null)
+                    return (Results.Ok(new ExtractResponse(imgUrl, imgTitle ?? "Instagram post", imgUrl, "image", null)), true, platform, imgTitle, imgUrl);
+            }
             var (code, message) = ClassifyError(run.Stderr);
             return (Results.BadRequest(new ErrorResponse(code, message)), false, platform, null, null);
         }
 
         try
         {
-            using var doc = JsonDocument.Parse(run.Stdout);
+            // yt-dlp emits one JSON object per image for carousel posts,
+            // separated by newlines.  Take only the first entry.
+            var firstLine = run.Stdout.Trim().Split('\n')[0].Trim();
+            using var doc = JsonDocument.Parse(firstLine);
             var root = doc.RootElement;
 
             string title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "Untitled" : "Untitled";
@@ -212,8 +290,7 @@ internal static class ExtractionLogic
                 return (Results.BadRequest(new ErrorResponse("NO_PLAYABLE_URL", "yt-dlp returned metadata but no usable video URL was found.")), false, platform, title, thumbnail);
             }
 
-            string? ext = root.TryGetProperty("ext", out var extElem) ? extElem.GetString() : null;
-            string mediaType = ext != null && _imageExtensions.Contains(ext) ? "image" : "video";
+            string mediaType = IsImagePost(root) ? "image" : "video";
 
             return (Results.Ok(new ExtractResponse(videoUrl, title, thumbnail, mediaType, headers)), true, platform, title, thumbnail);
         }
@@ -270,21 +347,37 @@ internal static class ExtractionLogic
 
         if (metaRun.ExitCode != 0)
         {
+            if (platform == "Instagram")
+            {
+                var (imgUrl, _) = await FetchInstagramImageAsync(request.Url, cookiesToUse);
+                if (imgUrl != null)
+                {
+                    var imageFileName = $"{Guid.NewGuid()}.jpg";
+                    var imagePath = Path.Combine(downloadsDirectory, imageFileName);
+                    using var dlReq = new HttpRequestMessage(HttpMethod.Get, imgUrl);
+                    dlReq.Headers.TryAddWithoutValidation("Referer", "https://www.instagram.com/");
+                    var dlResp = await _httpClient.SendAsync(dlReq);
+                    dlResp.EnsureSuccessStatusCode();
+                    await File.WriteAllBytesAsync(imagePath, await dlResp.Content.ReadAsByteArrayAsync());
+                    return Results.Ok(new DownloadResponse($"/files/{imageFileName}", "image"));
+                }
+            }
             var (errCode, errMsg) = ClassifyError(metaRun.Stderr);
             return Results.BadRequest(new ErrorResponse(errCode, errMsg));
         }
 
         try
         {
-            using var doc = JsonDocument.Parse(metaRun.Stdout);
+            // yt-dlp emits one JSON object per image for carousel posts,
+            // separated by newlines.  Parse only the first entry.
+            var firstLine = metaRun.Stdout.Trim().Split('\n')[0].Trim();
+            using var doc = JsonDocument.Parse(firstLine);
             var root = doc.RootElement;
 
-            string? ext = root.TryGetProperty("ext", out var extElem) ? extElem.GetString() : null;
-
-            if (ext != null && _imageExtensions.Contains(ext))
+            if (IsImagePost(root))
             {
                 // ── Image path ────────────────────────────────────────────
-                string? imageUrl = root.TryGetProperty("url", out var u) ? u.GetString() : null;
+                string? imageUrl = PickImageUrl(root);
 
                 if (string.IsNullOrEmpty(imageUrl))
                     return Results.BadRequest(new ErrorResponse("NO_PLAYABLE_URL", "Could not find image URL in yt-dlp output."));
@@ -377,6 +470,80 @@ internal static class ExtractionLogic
         return Results.Ok(new DownloadResponse($"/files/{fileName}", "audio"));
     }
 
+    // ── Instagram image scraper ────────────────────────────────────────────
+    // yt-dlp cannot extract photo posts. We hit the /embed/captioned/ URL
+    // (public, no auth for public posts) and look for the display_url or a
+    // CDN image src embedded in the page JSON/HTML.
+    static async Task<(string? url, string? title)> FetchInstagramImageAsync(string postUrl, string? cookiesPath)
+    {
+        try
+        {
+            var sc = Regex.Match(postUrl, @"/(?:p|reel)/([A-Za-z0-9_-]+)").Groups[1].Value;
+            if (string.IsNullOrEmpty(sc)) return (null, null);
+
+            // 1 — embed URL (no cookies required for public posts)
+            var (eu, et) = await ScrapeUrl(
+                $"https://www.instagram.com/p/{sc}/embed/captioned/", null);
+            if (eu != null) return (eu, et);
+
+            // 2 — main post page with session cookies
+            var cookie = BuildInstagramCookieHeader(cookiesPath);
+            if (!string.IsNullOrEmpty(cookie))
+                return await ScrapeUrl(postUrl, cookie);
+        }
+        catch { /* best effort */ }
+        return (null, null);
+    }
+
+    static async Task<(string? url, string? title)> ScrapeUrl(string url, string? cookieHeader)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.TryAddWithoutValidation("User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36");
+        req.Headers.TryAddWithoutValidation("Accept-Language", "en-US,en;q=0.9");
+        req.Headers.TryAddWithoutValidation("Referer", "https://www.instagram.com/");
+        if (!string.IsNullOrEmpty(cookieHeader))
+            req.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+
+        var resp = await _httpClient.SendAsync(req);
+        if (!resp.IsSuccessStatusCode) return (null, null);
+        var html = await resp.Content.ReadAsStringAsync();
+
+        // display_url in embedded JSON (Instagram embed page)
+        var m = Regex.Match(html, @"""display_url"":""(https:[^""]+)""");
+        if (m.Success)
+            return (UnescapeUrl(m.Groups[1].Value), ExtractTitle(html));
+
+        // og:image meta tag (authenticated main page)
+        m = Regex.Match(html, @"<meta[^>]+property=""og:image""[^>]+content=""([^""]+)""", RegexOptions.IgnoreCase);
+        if (!m.Success)
+            m = Regex.Match(html, @"<meta[^>]+content=""([^""]+)""[^>]+property=""og:image""", RegexOptions.IgnoreCase);
+        if (m.Success)
+            return (WebUtility.HtmlDecode(m.Groups[1].Value), ExtractTitle(html));
+
+        return (null, null);
+    }
+
+    static string UnescapeUrl(string s) =>
+        s.Replace("\\/", "/").Replace("\\u0026", "&");
+
+    static string? ExtractTitle(string html)
+    {
+        var m = Regex.Match(html, @"<title>([^<]+)</title>", RegexOptions.IgnoreCase);
+        return m.Success ? WebUtility.HtmlDecode(m.Groups[1].Value) : null;
+    }
+
+    static string BuildInstagramCookieHeader(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return "";
+        var parts = File.ReadLines(path)
+            .Where(l => !l.StartsWith('#') && l.Contains("instagram"))
+            .Select(l => l.Split('\t'))
+            .Where(p => p.Length >= 7)
+            .Select(p => $"{p[5]}={p[6]}");
+        return string.Join("; ", parts);
+    }
+
     static Dictionary<string, string>? ExtractHeaders(JsonElement element)
     {
         if (!element.TryGetProperty("http_headers", out var headersElement) || headersElement.ValueKind != JsonValueKind.Object)
@@ -424,6 +591,9 @@ internal static class ExtractionLogic
 
         if (lower.Contains("certificate") || lower.Contains("ssl") || lower.Contains("connection aborted") || lower.Contains("forcibly closed"))
             return ("NETWORK_ERROR", "A network/SSL error occurred while reaching the platform.");
+
+        if (lower.Contains("no video formats found"))
+            return ("INSTAGRAM_PHOTO_UNSUPPORTED", "Instagram photo posts cannot be downloaded at this time. yt-dlp's Instagram extractor does not support static image posts. Try an Instagram Reel or video instead.");
 
         var firstLine = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                               .FirstOrDefault(l => l.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase))
