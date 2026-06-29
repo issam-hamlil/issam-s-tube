@@ -98,28 +98,41 @@ export default function App() {
       setPreparing(false);
       setDownloading(true);
 
-      const sourceUrl = prepData.download_url.startsWith('http')
-        ? prepData.download_url
-        : `${API_BASE_URL}${prepData.download_url}`;
-
       const downloadHeaders = API_KEY ? { 'X-Api-Key': API_KEY } : {};
-      const extension = prepData.media_type === 'image' ? 'jpg' : 'mp4';
-      const fileUri = FileSystem.documentDirectory + `${Date.now()}.${extension}`;
+      
+      const urlsToDownload = (prepData.download_urls && prepData.download_urls.length > 0)
+        ? prepData.download_urls
+        : [prepData.download_url];
 
-      const downloadResumable = FileSystem.createDownloadResumable(
-        sourceUrl,
-        fileUri,
-        { headers: downloadHeaders },
-        (progress) => {
-          const pct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
-          setDownloadProgress(pct);
-        }
-      );
+      for (let i = 0; i < urlsToDownload.length; i++) {
+        const currentUrl = urlsToDownload[i];
+        if (!currentUrl) continue;
+        
+        const sourceUrl = currentUrl.startsWith('http')
+          ? currentUrl
+          : `${API_BASE_URL}${currentUrl}`;
 
-      const downloadResult = await downloadResumable.downloadAsync();
-      const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-      await MediaLibrary.createAlbumAsync("Issam's Tube", asset, false);
+        const extension = prepData.media_type === 'image' ? 'jpg' : 'mp4';
+        const fileUri = FileSystem.documentDirectory + `${Date.now()}_${i}.${extension}`;
 
+        const downloadResumable = FileSystem.createDownloadResumable(
+          sourceUrl,
+          fileUri,
+          { headers: downloadHeaders },
+          (progress) => {
+            // Rough overall progress approximation
+            const filePct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
+            const overallPct = (i + filePct) / urlsToDownload.length;
+            setDownloadProgress(overallPct);
+          }
+        );
+
+        const downloadResult = await downloadResumable.downloadAsync();
+        const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
+        await MediaLibrary.createAlbumAsync("Issam's Tube", asset, false);
+      }
+
+      setDownloadProgress(1.0);
       Alert.alert('Saved', 'Saved to your gallery in the best quality available.');
     } catch (err) {
       Alert.alert('Download failed', err.message);

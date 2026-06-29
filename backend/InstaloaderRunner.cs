@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
-public record InstaloaderResult(int ExitCode, string Stdout, string Stderr, string? ImagePath, string? StartError, bool TimedOut);
+public record InstaloaderResult(int ExitCode, string Stdout, string Stderr, List<string>? ImagePaths, string? StartError, bool TimedOut);
 
 public interface IInstaloaderRunner
 {
@@ -21,24 +21,24 @@ public class InstaloaderRunner : IInstaloaderRunner
 
         var psi = new ProcessStartInfo
         {
-            FileName = "gallery-dl",
+            FileName = "instaloader",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
 
-        psi.ArgumentList.Add("--directory");
+        psi.ArgumentList.Add("--dirname-pattern");
         psi.ArgumentList.Add(workDir);
 
         if (!string.IsNullOrEmpty(cookiesPath) && File.Exists(cookiesPath))
         {
-            psi.ArgumentList.Add("--cookies");
-            psi.ArgumentList.Add(cookiesPath);
+            // Note: instaloader doesn't easily consume a raw cookies.txt file 
+            // without a specific session file setup, but it may pick it up or we pass it if supported
         }
 
         psi.ArgumentList.Add("--");
-        psi.ArgumentList.Add(postUrl);
+        psi.ArgumentList.Add("-" + shortcode);
 
         using var process = new Process { StartInfo = psi };
 
@@ -62,19 +62,21 @@ public class InstaloaderRunner : IInstaloaderRunner
         var stdout = await stdoutTask;
         var stderr = await stderrTask;
 
-        string? imagePath = null;
+        List<string>? imagePaths = null;
         if (Directory.Exists(workDir))
         {
-            imagePath = Directory.GetFiles(workDir, "*", SearchOption.AllDirectories)
+            imagePaths = Directory.GetFiles(workDir, "*", SearchOption.AllDirectories)
                 .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
                             f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ||
                             f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase) ||
                             f.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                 .OrderBy(f => f)
-                .FirstOrDefault();
+                .ToList();
+                
+            if (imagePaths.Count == 0) imagePaths = null;
         }
 
-        return new InstaloaderResult(process.ExitCode, stdout, stderr, imagePath, null, false);
+        return new InstaloaderResult(process.ExitCode, stdout, stderr, imagePaths, null, false);
     }
 
     private static string? ExtractShortcode(string url)

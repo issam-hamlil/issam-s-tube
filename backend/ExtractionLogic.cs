@@ -7,8 +7,9 @@ using System.Text.RegularExpressions;
 public record YtDlpRunResult(int ExitCode, string Stdout, string Stderr, bool TimedOut, string? StartError);
 
 public record DownloadResponse(
-    [property: JsonPropertyName("download_url")] string DownloadUrl,
-    [property: JsonPropertyName("media_type")] string MediaType);
+    [property: JsonPropertyName("download_url")] string? DownloadUrl,
+    [property: JsonPropertyName("media_type")] string MediaType,
+    [property: JsonPropertyName("download_urls")] List<string>? DownloadUrls = null);
 
 public interface IYtDlpRunner
 {
@@ -345,11 +346,13 @@ internal static class ExtractionLogic
 
             if (platform == "Instagram" && (metaRun.TimedOut || errCode == "EXTRACTION_FAILED"))
             {
-                var (fallbackResult, fallbackSuccess, _, _, fallbackUrl) =
+                var (fallbackResult, fallbackSuccess, _, _, fallbackUrls) =
                     await TryInstagramImageFallbackAsync(request.Url, instaloaderRunner, cookiesToUse, platform, downloadsDirectory);
-                return fallbackSuccess
-                    ? Results.Ok(new DownloadResponse(fallbackUrl!, "image"))
-                    : fallbackResult;
+                
+                if (!fallbackSuccess) return fallbackResult;
+                
+                var urlList = fallbackUrls?.Split(',').ToList() ?? new List<string>();
+                return Results.Ok(new DownloadResponse(urlList.FirstOrDefault(), "image", urlList));
             }
 
             if (metaRun.TimedOut)
@@ -484,21 +487,28 @@ internal static class ExtractionLogic
                 title: "TIMEOUT",
                 statusCode: StatusCodes.Status504GatewayTimeout), false, platform, null, null);
 
-        if (result.ImagePath == null)
+        if (result.ImagePaths == null || result.ImagePaths.Count == 0)
             return (Results.BadRequest(new ErrorResponse("INSTAGRAM_IMAGE_UNAVAILABLE",
                 "This looks like an Instagram photo post, but it couldn't be retrieved. " +
                 "It may need a fresh cookies.txt — try re-exporting it from your browser.")),
                 false, platform, null, null);
 
         Directory.CreateDirectory(downloadsDirectory);
-        var fileName = $"{Guid.NewGuid()}{Path.GetExtension(result.ImagePath)}";
-        var destPath = Path.Combine(downloadsDirectory, fileName);
-        File.Copy(result.ImagePath, destPath, overwrite: true);
-        try { Directory.Delete(Path.GetDirectoryName(result.ImagePath)!, recursive: true); } catch { }
+        var fileUrls = new List<string>();
+        foreach (var imgPath in result.ImagePaths)
+        {
+            var fileName = $"{Guid.NewGuid()}{Path.GetExtension(imgPath)}";
+            var destPath = Path.Combine(downloadsDirectory, fileName);
+            File.Copy(imgPath, destPath, overwrite: true);
+            fileUrls.Add($"/files/{fileName}");
+        }
+        
+        try { Directory.Delete(Path.GetDirectoryName(result.ImagePaths.First())!, recursive: true); } catch { }
 
-        var fileUrl = $"/files/{fileName}";
-        return (Results.Ok(new ExtractResponse(fileUrl, "Instagram photo", fileUrl, "image", null)),
-            true, platform, "Instagram photo", fileUrl);
+        // For extraction response (single URL supported), just return the first image.
+        var firstFileUrl = fileUrls.First();
+        return (Results.Ok(new ExtractResponse(firstFileUrl, "Instagram photo", firstFileUrl, "image", null)),
+            true, platform, "Instagram photo", string.Join(",", fileUrls));
     }
 
     static Dictionary<string, string>? ExtractHeaders(JsonElement element)
