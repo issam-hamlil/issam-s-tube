@@ -94,6 +94,22 @@ app.MapPost("/download", async (ExtractRequest request, IYtDlpRunner runner, ILi
     return await ExtractionLogic.DownloadVideoAsync(request, runner, linkedInFetcher, downloadsDir);
 });
 
+app.MapPost("/audio", async (ExtractRequest request, IYtDlpRunner runner) =>
+{
+    var downloadsDir = Path.Combine(AppContext.BaseDirectory, "downloads");
+    Directory.CreateDirectory(downloadsDir);
+
+    foreach (var file in Directory.GetFiles(downloadsDir))
+    {
+        if (DateTime.UtcNow - File.GetCreationTimeUtc(file) > TimeSpan.FromHours(1))
+        {
+            try { File.Delete(file); } catch { /* best effort */ }
+        }
+    }
+
+    return await ExtractionLogic.DownloadAudioAsync(request, runner, downloadsDir);
+});
+
 app.MapPost("/extract", async (ExtractRequest request, AppDbContext db, IYtDlpRunner runner, ILinkedInImageFetcher linkedInFetcher) =>
 {
     var stopwatch = Stopwatch.StartNew();
