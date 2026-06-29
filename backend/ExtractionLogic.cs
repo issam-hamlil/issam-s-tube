@@ -241,7 +241,9 @@ internal static class ExtractionLogic
 
         if (run.TimedOut || run.ExitCode != 0)
         {
-            if (platform == "Instagram")
+            var (code, message) = ClassifyError(run.Stderr);
+
+            if (platform == "Instagram" && (run.TimedOut || code == "EXTRACTION_FAILED"))
             {
                 var downloadsDir = Path.Combine(AppContext.BaseDirectory, "downloads");
                 Directory.CreateDirectory(downloadsDir);
@@ -256,7 +258,6 @@ internal static class ExtractionLogic
                     statusCode: StatusCodes.Status504GatewayTimeout), false, platform, null, null);
             }
 
-            var (code, message) = ClassifyError(run.Stderr);
             return (Results.BadRequest(new ErrorResponse(code, message)), false, platform, null, null);
         }
 
@@ -340,7 +341,9 @@ internal static class ExtractionLogic
 
         if (metaRun.TimedOut || metaRun.ExitCode != 0)
         {
-            if (platform == "Instagram")
+            var (errCode, errMsg) = ClassifyError(metaRun.Stderr);
+
+            if (platform == "Instagram" && (metaRun.TimedOut || errCode == "EXTRACTION_FAILED"))
             {
                 var (fallbackResult, fallbackSuccess, _, _, fallbackUrl) =
                     await TryInstagramImageFallbackAsync(request.Url, instaloaderRunner, cookiesToUse, platform, downloadsDirectory);
@@ -357,7 +360,6 @@ internal static class ExtractionLogic
                     statusCode: StatusCodes.Status504GatewayTimeout);
             }
 
-            var (errCode, errMsg) = ClassifyError(metaRun.Stderr);
             return Results.BadRequest(new ErrorResponse(errCode, errMsg));
         }
 
