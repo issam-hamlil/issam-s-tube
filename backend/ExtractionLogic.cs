@@ -82,7 +82,7 @@ public class YtDlpProcessRunner : IYtDlpRunner
         RedirectStandardError = true,
         UseShellExecute = false,
         CreateNoWindow = true,
-        ArgumentList = { "--no-warnings", "--socket-timeout", "15" },
+        ArgumentList = { "--no-warnings", "--no-colors", "--socket-timeout", "15" },
     };
 
     private static void AddCookiesAndUrl(ProcessStartInfo psi, string? cookiesPath, string url)
