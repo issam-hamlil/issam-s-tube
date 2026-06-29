@@ -1,0 +1,24 @@
+2026-06-29 18:50:18 [INF] Executed DbCommand (28ms) [Parameters=[], CommandType='"Text"', CommandTimeout='30']
+SELECT COUNT(*) FROM "sqlite_master" WHERE "type" = 'table' AND "rootpage" IS NOT NULL;
+2026-06-29 18:50:18 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 19
+2026-06-29 18:50:18 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-29 18:50:18 [INF] Extraction Unknown false in 0ms — not-a-url
+2026-06-29 18:50:19 [INF] Executed DbCommand (11ms) [Parameters=[@p0='?' (Size = 7), @p1='?' (DbType = Boolean), @p2='?', @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 9)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-29 18:50:19 [INF] Setting HTTP status code 400.
+2026-06-29 18:50:19 [INF] Writing value of type 'ErrorResponse' as Json.
+2026-06-29 18:50:19 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-29 18:50:19 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 400 null application/json; charset=utf-8 850.2382ms
+2026-06-29 18:50:19 [INF] Request starting HTTP/1.1 POST http://localhost/extract - application/json; charset=utf-8 52
+2026-06-29 18:50:19 [INF] Executing endpoint 'HTTP: POST /extract'
+2026-06-29 18:50:28 [INF] Extraction X/Twitter true in 9131ms — https://x.com/i/status/2069866804776784165
+2026-06-29 18:50:28 [INF] Executed DbCommand (0ms) [Parameters=[@p0='?' (Size = 9), @p1='?' (DbType = Boolean), @p2='?' (Size = 98), @p3='?' (DbType = DateTime), @p4='?' (Size = 79), @p5='?' (Size = 42)], CommandType='"Text"', CommandTimeout='30']
+INSERT INTO "History" ("Platform", "Success", "Thumbnail", "Timestamp", "Title", "Url")
+VALUES (@p0, @p1, @p2, @p3, @p4, @p5)
+RETURNING "Id";
+2026-06-29 18:50:28 [INF] Setting HTTP status code 200.
+2026-06-29 18:50:28 [INF] Writing value of type 'ExtractResponse' as Json.
+2026-06-29 18:50:28 [INF] Executed endpoint 'HTTP: POST /extract'
+2026-06-29 18:50:28 [INF] Request finished HTTP/1.1 POST http://localhost/extract - 200 null application/json; charset=utf-8 9300.1237ms
