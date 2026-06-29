@@ -23,7 +23,7 @@ export default function App() {
   const [audioProgress, setAudioProgress] = useState(0);
 
   // ── Navigation ────────────────────────────────────────────────
-  const [screen, setScreen] = useState('home'); // 'home' | 'audio' | 'history'
+  const [screen, setScreen] = useState('home'); // 'home' | 'audio' | 'instagram' | 'history'
   const [history, setHistory] = useState([]);
 
   const loadHistory = async () => {
@@ -214,6 +214,12 @@ export default function App() {
           <Text style={[styles.tabText, screen === 'home' && styles.tabTextActive]}>📹 Video</Text>
         </TouchableOpacity>
         <TouchableOpacity
+          style={[styles.tab, screen === 'instagram' && styles.tabActive]}
+          onPress={() => setScreen('instagram')}
+        >
+          <Text style={[styles.tabText, screen === 'instagram' && styles.tabTextActive]}>📷 Insta Pics</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={[styles.tab, screen === 'audio' && styles.tabActive]}
           onPress={() => setScreen('audio')}
         >
@@ -311,6 +317,59 @@ export default function App() {
                   ? 'Server is downloading and converting to MP3…'
                   : `Saving to your device… ${Math.round(audioProgress * 100)}%`}
               </Text>
+            </View>
+          )}
+        </>
+      )}
+
+      {/* ── Instagram Pictures screen ── */}
+      {screen === 'instagram' && (
+        <>
+          <View style={styles.audioHeader}>
+            <Text style={styles.audioSubtitle}>Download high-quality Instagram Photos</Text>
+            <Text style={styles.audioNote}>Paste any Instagram post or reel link</Text>
+          </View>
+
+          <View style={{ marginBottom: 12 }}>
+            <Button title="Paste from clipboard" onPress={handlePasteFromClipboard} color="#666" />
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Paste Instagram URL here"
+            value={url}
+            onChangeText={setUrl}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <View style={styles.extractBtn}>
+            <Button
+              title="Fetch Instagram Picture"
+              onPress={handleFetch}
+              disabled={!url || loading}
+              color="#e1306c"
+            />
+          </View>
+
+          {loading && <ActivityIndicator size="large" color="#e1306c" style={{ marginTop: 20 }} />}
+
+          {result && (
+            <View style={styles.resultCard}>
+              {result.thumbnail && <Image source={{ uri: result.thumbnail }} style={styles.thumbnail} />}
+              <Text style={styles.resultTitle}>{result.title}</Text>
+              <Button
+                title={
+                  preparing
+                    ? 'Preparing photo…'
+                    : downloading
+                      ? `Downloading… ${Math.round(downloadProgress * 100)}%`
+                      : 'Save Photo to Gallery'
+                }
+                color="#e1306c"
+                onPress={handleDownload}
+                disabled={preparing || downloading}
+              />
             </View>
           )}
         </>

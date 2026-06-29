@@ -224,7 +224,7 @@ internal static class ExtractionLogic
             return (Results.Ok(new ExtractResponse(imageUrl, liTitle ?? "LinkedIn image", imageUrl, "image", null)), true, platform, liTitle, imageUrl);
         }
 
-        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
+        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? Path.Combine(AppContext.BaseDirectory, "cookies.txt");
         var cookiesToUse = parsedUrl.Host.Contains("instagram.com", StringComparison.OrdinalIgnoreCase) && File.Exists(cookiesPath)
             ? cookiesPath
             : null;
@@ -325,7 +325,7 @@ internal static class ExtractionLogic
             return Results.Ok(new DownloadResponse(imageUrl, "image"));
         }
 
-        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
+        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? Path.Combine(AppContext.BaseDirectory, "cookies.txt");
         var cookiesToUse = platform == "Instagram" && File.Exists(cookiesPath) ? cookiesPath : null;
 
         // Run metadata first to detect whether this is an image post or a video post.
@@ -436,7 +436,7 @@ internal static class ExtractionLogic
         if (platform == "LinkedIn")
             return Results.BadRequest(new ErrorResponse("UNSUPPORTED_PLATFORM", "Audio extraction is not supported for LinkedIn posts."));
 
-        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? "/app/cookies.txt";
+        var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? Path.Combine(AppContext.BaseDirectory, "cookies.txt");
         var cookiesToUse = platform == "Instagram" && File.Exists(cookiesPath) ? cookiesPath : null;
 
         var fileName = $"{Guid.NewGuid()}.mp3";
