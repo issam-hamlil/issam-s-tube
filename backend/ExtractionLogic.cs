@@ -241,7 +241,7 @@ internal static class ExtractionLogic
 
         if (run.TimedOut || run.ExitCode != 0)
         {
-            if (platform == "Instagram" && (run.TimedOut || run.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase)))
+            if (platform == "Instagram")
             {
                 var downloadsDir = Path.Combine(AppContext.BaseDirectory, "downloads");
                 Directory.CreateDirectory(downloadsDir);
@@ -340,7 +340,7 @@ internal static class ExtractionLogic
 
         if (metaRun.TimedOut || metaRun.ExitCode != 0)
         {
-            if (platform == "Instagram" && (metaRun.TimedOut || metaRun.Stderr.Contains("no video formats found", StringComparison.OrdinalIgnoreCase)))
+            if (platform == "Instagram")
             {
                 var (fallbackResult, fallbackSuccess, _, _, fallbackUrl) =
                     await TryInstagramImageFallbackAsync(request.Url, instaloaderRunner, cookiesToUse, platform, downloadsDirectory);
