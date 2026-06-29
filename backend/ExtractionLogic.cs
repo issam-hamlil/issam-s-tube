@@ -88,6 +88,12 @@ public class YtDlpProcessRunner : IYtDlpRunner
 
     private static void AddCookiesAndUrl(ProcessStartInfo psi, string? cookiesPath, string url)
     {
+        if (url.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) || url.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
+        {
+            psi.ArgumentList.Add("--impersonate");
+            psi.ArgumentList.Add("chrome");
+        }
+
         if (!string.IsNullOrEmpty(cookiesPath))
         {
             psi.ArgumentList.Add("--cookies");
@@ -226,9 +232,7 @@ internal static class ExtractionLogic
         }
 
         var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? Path.Combine(AppContext.BaseDirectory, "cookies.txt");
-        var cookiesToUse = parsedUrl.Host.Contains("instagram.com", StringComparison.OrdinalIgnoreCase) && File.Exists(cookiesPath)
-            ? cookiesPath
-            : null;
+        var cookiesToUse = File.Exists(cookiesPath) ? cookiesPath : null;
 
         var run = await runner.RunAsync(request.Url, cookiesToUse);
 
@@ -328,7 +332,7 @@ internal static class ExtractionLogic
         }
 
         var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? Path.Combine(AppContext.BaseDirectory, "cookies.txt");
-        var cookiesToUse = platform == "Instagram" && File.Exists(cookiesPath) ? cookiesPath : null;
+        var cookiesToUse = File.Exists(cookiesPath) ? cookiesPath : null;
 
         // Run metadata first to detect whether this is an image post or a video post.
         // Instagram reels → video path. Instagram photo posts → image path.
@@ -442,7 +446,7 @@ internal static class ExtractionLogic
             return Results.BadRequest(new ErrorResponse("UNSUPPORTED_PLATFORM", "Audio extraction is not supported for LinkedIn posts."));
 
         var cookiesPath = Environment.GetEnvironmentVariable("INSTAGRAM_COOKIES_PATH") ?? Path.Combine(AppContext.BaseDirectory, "cookies.txt");
-        var cookiesToUse = platform == "Instagram" && File.Exists(cookiesPath) ? cookiesPath : null;
+        var cookiesToUse = File.Exists(cookiesPath) ? cookiesPath : null;
 
         var fileName = $"{Guid.NewGuid()}.mp3";
         var outputPath = Path.Combine(downloadsDirectory, fileName);
