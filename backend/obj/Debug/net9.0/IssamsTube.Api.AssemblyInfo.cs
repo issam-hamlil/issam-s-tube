@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("IssamsTube.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fb6c3a402c81c5b7df70baf4816d9bb81b5ec687")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+eedb0417dd9fb78c1fe4f303ccc01033b7229f58")]
 [assembly: System.Reflection.AssemblyProductAttribute("IssamsTube.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("IssamsTube.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
