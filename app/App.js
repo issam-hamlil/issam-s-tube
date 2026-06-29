@@ -195,8 +195,7 @@ export default function App() {
       );
 
       const downloadResult = await downloadResumable.downloadAsync();
-      const asset = await MediaLibrary.createAssetAsync(downloadResult.uri);
-      await MediaLibrary.createAlbumAsync("Issam's Tube", asset, false);
+      await MediaLibrary.saveToLibraryAsync(downloadResult.uri);
 
       Alert.alert('Saved', 'MP3 (HD quality) saved to your device.');
     } catch (err) {
