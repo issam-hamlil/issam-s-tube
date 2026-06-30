@@ -9,7 +9,8 @@ public record YtDlpRunResult(int ExitCode, string Stdout, string Stderr, bool Ti
 public record DownloadResponse(
     [property: JsonPropertyName("download_url")] string? DownloadUrl,
     [property: JsonPropertyName("media_type")] string MediaType,
-    [property: JsonPropertyName("download_urls")] List<string>? DownloadUrls = null);
+    [property: JsonPropertyName("download_urls")] List<string>? DownloadUrls = null,
+    [property: JsonPropertyName("title")] string? Title = null);
 
 public interface IYtDlpRunner
 {
@@ -370,6 +371,7 @@ internal static class ExtractionLogic
             return Results.BadRequest(new ErrorResponse(errCode, errMsg));
         }
 
+        string? title = null;
         try
         {
             // yt-dlp emits one JSON object per image for carousel posts,
@@ -377,6 +379,7 @@ internal static class ExtractionLogic
             var firstLine = metaRun.Stdout.Trim().Split('\n')[0].Trim();
             using var doc = JsonDocument.Parse(firstLine);
             var root = doc.RootElement;
+            title = root.TryGetProperty("title", out var tElem) ? tElem.GetString() : null;
 
             if (IsImagePost(root))
             {
@@ -399,7 +402,7 @@ internal static class ExtractionLogic
                 httpResp.EnsureSuccessStatusCode();
                 await File.WriteAllBytesAsync(imagePath, await httpResp.Content.ReadAsByteArrayAsync());
 
-                return Results.Ok(new DownloadResponse($"/files/{imageFileName}", "image"));
+                return Results.Ok(new DownloadResponse($"/files/{imageFileName}", "image", null, title));
             }
         }
         catch (JsonException) { /* fall through to video path */ }
@@ -428,7 +431,7 @@ internal static class ExtractionLogic
             return Results.BadRequest(new ErrorResponse(code, message));
         }
 
-        return Results.Ok(new DownloadResponse($"/files/{fileName}", "video"));
+        return Results.Ok(new DownloadResponse($"/files/{fileName}", "video", null, title));
     }
 
     public static async Task<IResult> DownloadAudioAsync(ExtractRequest request, IYtDlpRunner runner, string downloadsDirectory)
@@ -451,6 +454,19 @@ internal static class ExtractionLogic
         var fileName = $"{Guid.NewGuid()}.mp3";
         var outputPath = Path.Combine(downloadsDirectory, fileName);
 
+        var metaRun = await runner.RunAsync(request.Url, cookiesToUse);
+        string? title = null;
+        if (metaRun.ExitCode == 0)
+        {
+            try
+            {
+                var firstLine = metaRun.Stdout.Trim().Split('\n')[0].Trim();
+                using var doc = JsonDocument.Parse(firstLine);
+                title = doc.RootElement.TryGetProperty("title", out var tElem) ? tElem.GetString() : null;
+            }
+            catch { }
+        }
+
         var run = await runner.AudioAsync(request.Url, cookiesToUse, outputPath);
 
         if (run.StartError != null)
@@ -471,7 +487,7 @@ internal static class ExtractionLogic
             return Results.BadRequest(new ErrorResponse(code, message));
         }
 
-        return Results.Ok(new DownloadResponse($"/files/{fileName}", "audio"));
+        return Results.Ok(new DownloadResponse($"/files/{fileName}", "audio", null, title));
     }
 
     private static async Task<(IResult result, bool success, string platform, string? title, string? thumbnail)> TryInstagramImageFallbackAsync(
