@@ -91,8 +91,8 @@ public class YtDlpProcessRunner : IYtDlpRunner
     {
         if (url.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) || url.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
         {
-            psi.ArgumentList.Add("--impersonate");
-            psi.ArgumentList.Add("chrome");
+            psi.ArgumentList.Add("--extractor-args");
+            psi.ArgumentList.Add("youtube:player_client=android");
         }
 
         if (!string.IsNullOrEmpty(cookiesPath))
@@ -578,6 +578,9 @@ internal static class ExtractionLogic
 
         if (lower.Contains("certificate") || lower.Contains("ssl") || lower.Contains("connection aborted") || lower.Contains("forcibly closed"))
             return ("NETWORK_ERROR", "A network/SSL error occurred while reaching the platform.");
+
+        if (lower.Contains("unable to obtain file audio codec"))
+            return ("NO_AUDIO_TRACK", "This post does not contain any audio (it might be a photo or a silent video).");
 
         var firstLine = stderr.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                               .FirstOrDefault(l => l.StartsWith("ERROR", StringComparison.OrdinalIgnoreCase))
