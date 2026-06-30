@@ -91,6 +91,8 @@ public class YtDlpProcessRunner : IYtDlpRunner
     {
         if (url.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) || url.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
         {
+            psi.ArgumentList.Add("--impersonate");
+            psi.ArgumentList.Add("chrome");
             psi.ArgumentList.Add("--extractor-args");
             psi.ArgumentList.Add("youtube:player_client=android");
         }
